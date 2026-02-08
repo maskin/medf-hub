@@ -1,0 +1,21 @@
+# Project TODO
+
+- [x] Database schema design (documents, blocks, comments, references tables)
+- [x] Database migration execution
+- [x] Backend API: document CRUD (create, read, update, delete)
+- [x] Backend API: Markdown to MeDF conversion
+- [x] Backend API: block-level comments/discussions
+- [x] Backend API: document search and filtering
+- [x] Backend API: reference tracking
+- [x] Backend API: IPFS CID simulation (SHA-256 based)
+- [x] Frontend: Global layout, theme, routing
+- [x] Frontend: Document list page with search/filter
+- [x] Frontend: Markdown to MeDF converter page
+- [x] Frontend: MeDF document editor/creator page
+- [x] Frontend: Document viewer with block-level display and TOC
+- [x] Frontend: Client-side verification (RFC 8785 JSON canonicalization + hash)
+- [x] Frontend: IPFS CID generation simulation
+- [x] Frontend: Block-level comment/discussion UI
+- [x] Frontend: Reference tracking (MEDF: doc#block auto-detection and linking)
+- [x] Frontend: Offline verification capability
+- [x] Vitest unit tests

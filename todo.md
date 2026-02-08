@@ -36,3 +36,42 @@
 - [x] 通知機能: 参照先文書の更新時に通知
 - [x] 通知機能: フロントエンドUI（オーナー通知サービス経由）
 - [x] Vitest: 新機能のテスト追加
+
+
+## Vision-Aligned Improvements (Trust & Constructive Discourse)
+
+### Phase 1: Trust & Verification (v1.1.0 - High Priority)
+- [ ] GitHub OAuth author verification display enhancement
+- [ ] Author badge with verified status, join date
+- [ ] Edit history with author attribution display
+- [ ] Document signature & hash verification UI
+- [ ] Citation auto-detection in comments
+- [ ] Citation count per block display
+- [ ] Comment flagging system (flag, reason, auto-hide)
+- [ ] Basic moderation dashboard
+
+### Phase 2: Constructive Discourse (v1.2.0 - Medium Priority)
+- [ ] Enhanced comment threading (voting, replies)
+- [ ] Upvote/downvote comment functionality
+- [ ] Sort comments by relevance (votes + recency)
+- [ ] Consensus visualization (agreement/disagreement)
+- [ ] Evidence-based commenting (link claims to sources)
+- [ ] Comment quality scoring algorithm
+- [ ] Moderation dashboard UI
+- [ ] Content policy enforcement
+
+### Phase 3: Transparency & Governance (v1.3.0 - Medium Priority)
+- [ ] Document access control (ACL) implementation
+- [ ] Role-based permissions (viewer/editor/admin)
+- [ ] Change justification/reasoning requirement
+- [ ] Collaborative editing with conflict resolution
+- [ ] Audit log for sensitive actions
+- [ ] Moderation policy documentation
+
+### Phase 4: Social Impact (v2.0.0 - Lower Priority)
+- [ ] Topic-level consensus metrics
+- [ ] Citation network visualization
+- [ ] Credibility scoring system
+- [ ] Impact metrics (reach, engagement, citations)
+- [ ] Perspective diversity display
+- [ ] Trending credible content algorithm

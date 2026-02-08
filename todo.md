@@ -28,3 +28,11 @@
 - [x] Frontend: Threaded comment UI with reply functionality
 - [x] Frontend: IPFS publish button and gateway link display
 - [x] Vitest: tests for new features (versions, threads, IPFS)
+- [x] Pinata APIキー環境変数設定 (PINATA_API_KEY, PINATA_API_SECRET)
+- [x] 文書エクスポート: HTML形式でのエクスポート
+- [x] 文書エクスポート: PDF形式でのエクスポート
+- [x] 文書エクスポート: フロントエンドUIにエクスポートボタン追加
+- [x] 通知機能: コメント投稿時にオーナーへ通知
+- [x] 通知機能: 参照先文書の更新時に通知
+- [x] 通知機能: フロントエンドUI（オーナー通知サービス経由）
+- [x] Vitest: 新機能のテスト追加

@@ -15,6 +15,7 @@ import {
 import { extractCitations, slugify } from "@shared/medf";
 import type { MedfDocument, MedfBlock } from "@shared/medf";
 import { TRPCError } from "@trpc/server";
+import { notifyOwner } from "./_core/notification";
 
 // ─── MeDF Crypto Utilities (Server-side) ────────────────────
 import { createHash } from "crypto";
@@ -343,6 +344,16 @@ const documentRouter = router({
       }
       if (refs.length > 0) await createReferences(refs);
 
+      // Notify owner about document update
+      try {
+        await notifyOwner({
+          title: `📝 文書更新: ${title}`,
+          content: `文書「${title}」(${medf.id}) が更新されました。\n\nバージョン: v${latestVersion + 1} → 最新\nブロック数: ${medf.blocks.length}\nハッシュ: ${docHashValue.substring(0, 16)}...${input.changeSummary ? `\n変更概要: ${input.changeSummary}` : ""}`,
+        });
+      } catch (e) {
+        console.warn("[Notification] Failed to send update notification:", e);
+      }
+
       return { id: input.id, docHash: docHashValue, ipfsCid, medf };
     }),
 
@@ -477,6 +488,20 @@ const commentRouter = router({
         content: input.content,
         citation: input.citation || null,
       });
+
+      // Send notification to owner about new comment
+      try {
+        const doc = await getDocumentById(input.documentId);
+        const blockInfo = input.blockId ? ` (block: ${input.blockId})` : "";
+        const replyInfo = input.parentId ? " [返信]" : "";
+        await notifyOwner({
+          title: `💬 新しいコメント${replyInfo}: ${doc?.title || "Unknown"}`,
+          content: `文書「${doc?.title || "Unknown"}${blockInfo}」に新しいコメントが投稿されました。\n\nコメント内容: ${input.content.substring(0, 200)}${input.content.length > 200 ? "..." : ""}\n${input.citation ? `引用: ${input.citation}` : ""}`,
+        });
+      } catch (e) {
+        console.warn("[Notification] Failed to send comment notification:", e);
+      }
+
       return { id };
     }),
 
@@ -638,6 +663,136 @@ const ipfsRouter = router({
     }),
 });
 
+// ─── Export Router ─────────────────────────────────────────
+
+function medfToHtml(medf: MedfDocument, title: string): string {
+  const blocksHtml = medf.blocks.map((block) => {
+    const escapedText = block.text
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+    const formattedText = block.format === 'markdown'
+      ? escapedText
+          .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+          .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+          .replace(/^# (.+)$/gm, '<h1>$1</h1>')
+          .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+          .replace(/\*(.+?)\*/g, '<em>$1</em>')
+          .replace(/`(.+?)`/g, '<code>$1</code>')
+          .replace(/\n\n/g, '</p><p>')
+          .replace(/\n/g, '<br/>')
+      : escapedText.replace(/\n/g, '<br/>');
+
+    return `
+    <section id="block-${block.block_id}" class="block">
+      <div class="block-header">
+        <span class="block-id">${block.block_id}</span>
+        <span class="block-role">${block.role}</span>
+        <span class="block-format">${block.format}</span>
+      </div>
+      <div class="block-content"><p>${formattedText}</p></div>
+      ${block.block_hash ? `<div class="block-hash">Hash: ${block.block_hash}</div>` : ''}
+    </section>`;
+  }).join('\n');
+
+  return `<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${title}</title>
+  <style>
+    :root { --primary: #2563eb; --border: #e5e7eb; --muted: #6b7280; --bg: #ffffff; }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Inter', 'Noto Sans JP', sans-serif; max-width: 800px; margin: 0 auto; padding: 2rem; color: #1f2937; background: var(--bg); line-height: 1.7; }
+    .header { border-bottom: 2px solid var(--primary); padding-bottom: 1.5rem; margin-bottom: 2rem; }
+    .header h1 { font-size: 1.75rem; font-weight: 700; color: #111827; }
+    .meta { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-top: 0.75rem; font-size: 0.8rem; color: var(--muted); }
+    .meta span { background: #f3f4f6; padding: 0.2rem 0.6rem; border-radius: 4px; }
+    .toc { background: #f9fafb; border: 1px solid var(--border); border-radius: 8px; padding: 1.25rem; margin-bottom: 2rem; }
+    .toc h2 { font-size: 0.9rem; font-weight: 600; margin-bottom: 0.75rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+    .toc ul { list-style: none; }
+    .toc li { padding: 0.25rem 0; }
+    .toc a { color: var(--primary); text-decoration: none; font-size: 0.9rem; }
+    .toc a:hover { text-decoration: underline; }
+    .block { border: 1px solid var(--border); border-radius: 8px; margin-bottom: 1.5rem; overflow: hidden; }
+    .block-header { background: #f9fafb; padding: 0.5rem 1rem; border-bottom: 1px solid var(--border); display: flex; gap: 0.5rem; align-items: center; }
+    .block-id { font-family: monospace; font-size: 0.85rem; font-weight: 600; color: #374151; }
+    .block-role, .block-format { font-size: 0.7rem; background: #e5e7eb; padding: 0.1rem 0.4rem; border-radius: 3px; color: var(--muted); }
+    .block-content { padding: 1rem; }
+    .block-content p { margin-bottom: 0.75rem; }
+    .block-content p:last-child { margin-bottom: 0; }
+    .block-hash { padding: 0.4rem 1rem; background: #f9fafb; border-top: 1px solid var(--border); font-family: monospace; font-size: 0.7rem; color: var(--muted); }
+    .doc-hash { margin-top: 2rem; padding: 1rem; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; }
+    .doc-hash h3 { font-size: 0.85rem; font-weight: 600; color: #166534; margin-bottom: 0.5rem; }
+    .doc-hash p { font-family: monospace; font-size: 0.75rem; color: #166534; word-break: break-all; }
+    .footer { margin-top: 2rem; padding-top: 1rem; border-top: 1px solid var(--border); text-align: center; font-size: 0.75rem; color: var(--muted); }
+    h1 { font-size: 1.5rem; margin-bottom: 0.5rem; }
+    h2 { font-size: 1.25rem; margin-bottom: 0.5rem; }
+    h3 { font-size: 1.1rem; margin-bottom: 0.4rem; }
+    code { background: #f3f4f6; padding: 0.1rem 0.3rem; border-radius: 3px; font-size: 0.85em; }
+    strong { font-weight: 600; }
+    em { font-style: italic; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>${title}</h1>
+    <div class="meta">
+      <span>MeDF v${medf.medf_version}</span>
+      <span>ID: ${medf.id}</span>
+      <span>Issuer: ${medf.issuer}</span>
+      <span>Snapshot: ${medf.snapshot}</span>
+      ${medf.document_type ? `<span>Type: ${medf.document_type}</span>` : ''}
+      <span>${medf.blocks.length} blocks</span>
+    </div>
+  </div>
+
+  <div class="toc">
+    <h2>Table of Contents</h2>
+    <ul>
+      ${medf.blocks.map((b, i) => `<li>${i + 1}. <a href="#block-${b.block_id}">${b.block_id}</a> <small>(${b.role})</small></li>`).join('\n      ')}
+    </ul>
+  </div>
+
+  ${blocksHtml}
+
+  ${medf.doc_hash ? `
+  <div class="doc-hash">
+    <h3>Document Hash (${medf.doc_hash.algorithm})</h3>
+    <p>${medf.doc_hash.value}</p>
+  </div>` : ''}
+
+  <div class="footer">
+    <p>Generated by MeDF Hub &middot; MeDF v${medf.medf_version} &middot; ${new Date().toISOString()}</p>
+  </div>
+</body>
+</html>`;
+}
+
+const exportRouter = router({
+  html: publicProcedure
+    .input(z.object({ documentId: z.number() }))
+    .query(async ({ input }) => {
+      const doc = await getDocumentById(input.documentId);
+      if (!doc) throw new TRPCError({ code: "NOT_FOUND", message: "Document not found" });
+      const medf = JSON.parse(doc.medfJson) as MedfDocument;
+      const html = medfToHtml(medf, doc.title);
+      return { html, filename: `${doc.medfId}.html` };
+    }),
+
+  pdf: publicProcedure
+    .input(z.object({ documentId: z.number() }))
+    .query(async ({ input }) => {
+      const doc = await getDocumentById(input.documentId);
+      if (!doc) throw new TRPCError({ code: "NOT_FOUND", message: "Document not found" });
+      const medf = JSON.parse(doc.medfJson) as MedfDocument;
+      const html = medfToHtml(medf, doc.title);
+      // Return HTML for client-side PDF generation via print
+      return { html, filename: `${doc.medfId}.pdf`, title: doc.title };
+    }),
+});
+
 // ─── Main Router ────────────────────────────────────────────
 
 export const appRouter = router({
@@ -655,6 +810,7 @@ export const appRouter = router({
   comment: commentRouter,
   reference: referenceRouter,
   ipfs: ipfsRouter,
+  export: exportRouter,
 });
 
 export type AppRouter = typeof appRouter;

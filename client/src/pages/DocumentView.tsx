@@ -52,6 +52,8 @@ import {
   Upload,
   Reply,
   CornerDownRight,
+  FileDown,
+  Printer,
 } from "lucide-react";
 import { verifyDocument, simulateIpfsCid, stableStringify } from "@/lib/medf-crypto";
 import { Streamdown } from "streamdown";
@@ -237,8 +239,9 @@ export default function DocumentView() {
   const [, setLocation] = useLocation();
   const { user } = useAuth();
   const docId = params?.id ? parseInt(params.id, 10) : null;
+  const trpcUtils = trpc.useUtils();
 
-  // ─── Queries ──────────────────────────────────────────────
+  // ─── Queries ──────────────────────────────────────────────────
   const { data: docData, isLoading, refetch: refetchDoc } = trpc.document.getById.useQuery(
     { id: docId! },
     { enabled: docId !== null && !isNaN(docId!) }
@@ -356,6 +359,41 @@ export default function DocumentView() {
     a.download = `${docData.medfId}.medf.json`;
     a.click();
     URL.revokeObjectURL(url);
+  };
+
+  const handleExportHtml = async () => {
+    if (!docId) return;
+    try {
+      const result = await trpcUtils.export.html.fetch({ documentId: docId });
+      const blob = new Blob([result.html], { type: "text/html;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = result.filename;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success("HTMLをエクスポートしました");
+    } catch {
+      toast.error("エクスポートに失敗しました");
+    }
+  };
+
+  const handleExportPdf = async () => {
+    if (!docId) return;
+    try {
+      const result = await trpcUtils.export.pdf.fetch({ documentId: docId });
+      const printWindow = window.open("", "_blank");
+      if (printWindow) {
+        printWindow.document.write(result.html);
+        printWindow.document.close();
+        printWindow.onload = () => {
+          printWindow.print();
+        };
+      }
+      toast.success("PDF印刷ダイアログを開きました");
+    } catch {
+      toast.error("エクスポートに失敗しました");
+    }
   };
 
   const handleSubmitComment = (blockId?: string) => {
@@ -514,6 +552,12 @@ export default function DocumentView() {
           </Button>
           <Button variant="outline" size="sm" onClick={handleDownload} className="gap-1">
             <Download className="h-3.5 w-3.5" />
+          </Button>
+          <Button variant="outline" size="sm" onClick={handleExportHtml} className="gap-1">
+            <FileDown className="h-3.5 w-3.5" />HTML
+          </Button>
+          <Button variant="outline" size="sm" onClick={handleExportPdf} className="gap-1">
+            <Printer className="h-3.5 w-3.5" />PDF
           </Button>
           {user && (
             <Button

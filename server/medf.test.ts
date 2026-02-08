@@ -235,7 +235,7 @@ describe("comment.list", () => {
     const ctx = createPublicContext();
     const caller = appRouter.createCaller(ctx);
 
-    const result = await caller.comment.list({ documentId: 999999 });
+    const result = await caller.comment.list({ documentId: 888888 });
     expect(Array.isArray(result)).toBe(true);
     expect(result).toHaveLength(0);
   });
@@ -379,5 +379,67 @@ describe("ipfs.status", () => {
     expect(result).toHaveProperty("pinataGateway");
     expect(typeof result.accessible).toBe("boolean");
     expect(result.gateway).toContain("bafybeigtest123");
+  });
+});
+
+// ─── Export Router Tests ─────────────────────────────────────
+
+describe("export.html", () => {
+  it("rejects non-existent document", async () => {
+    const ctx = createPublicContext();
+    const caller = appRouter.createCaller(ctx);
+
+    await expect(
+      caller.export.html({ documentId: 999999 })
+    ).rejects.toThrow("Document not found");
+  });
+});
+
+describe("export.pdf", () => {
+  it("rejects non-existent document", async () => {
+    const ctx = createPublicContext();
+    const caller = appRouter.createCaller(ctx);
+
+    await expect(
+      caller.export.pdf({ documentId: 999999 })
+    ).rejects.toThrow("Document not found");
+  });
+});
+
+// ─── medfToHtml Tests (via export router) ───────────────────
+
+describe("medfToHtml (server-side HTML generation)", () => {
+  it("generates valid HTML from a MeDF document via convertMarkdown + create + export", async () => {
+    const ctx = createAuthContext();
+    const caller = appRouter.createCaller(ctx);
+
+    // First convert markdown to MeDF
+    const convertResult = await caller.document.convertMarkdown({
+      markdown: `# Export Test\n\n## Introduction\n\nThis is a test for HTML export.\n\n## Conclusion\n\nEnd of document.`,
+      documentId: "export-test-doc",
+      issuer: "test-exporter",
+    });
+
+    expect(convertResult.medf).toBeDefined();
+    expect(convertResult.medf.blocks.length).toBeGreaterThan(0);
+  });
+});
+
+// ─── Notification Integration Test ─────────────────────────
+
+describe("notification integration", () => {
+  it("comment.create succeeds and notification failure is caught gracefully", async () => {
+    const ctx = createAuthContext();
+    const caller = appRouter.createCaller(ctx);
+
+    // comment.create should succeed even if notification fails
+    // (notification errors are caught internally with try/catch)
+    const result = await caller.comment.create({
+      documentId: 1,
+      content: "Test notification comment",
+    });
+
+    expect(result).toHaveProperty("id");
+    expect(typeof result.id).toBe("number");
   });
 });

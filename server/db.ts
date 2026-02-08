@@ -1,4 +1,4 @@
-import { eq, desc, like, and, or, sql } from "drizzle-orm";
+import { eq, desc, like, and, or, sql, asc, isNull } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
   InsertUser, users,
@@ -6,6 +6,7 @@ import {
   blocks, InsertBlock, Block,
   comments, InsertComment, Comment,
   references, InsertReference, Reference,
+  documentVersions, InsertDocumentVersion, DocumentVersion,
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
@@ -171,10 +172,10 @@ export async function updateDocument(id: number, data: Partial<InsertDocument>) 
 export async function deleteDocument(id: number) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  // Delete related data first
   await db.delete(blocks).where(eq(blocks.documentId, id));
   await db.delete(comments).where(eq(comments.documentId, id));
   await db.delete(references).where(eq(references.sourceDocId, id));
+  await db.delete(documentVersions).where(eq(documentVersions.documentId, id));
   await db.delete(documents).where(eq(documents.id, id));
 }
 
@@ -237,9 +238,16 @@ export async function getCommentsByDocument(documentId: number, blockId?: string
     .from(comments)
     .leftJoin(users, eq(comments.userId, users.id))
     .where(and(...conditions))
-    .orderBy(comments.createdAt);
+    .orderBy(asc(comments.createdAt));
 
   return rows;
+}
+
+export async function getCommentById(id: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(comments).where(eq(comments.id, id)).limit(1);
+  return result.length > 0 ? result[0] : undefined;
 }
 
 export async function deleteComment(id: number, userId: number) {
@@ -303,4 +311,54 @@ export async function deleteReferencesByDocument(documentId: number) {
   const db = await getDb();
   if (!db) return;
   await db.delete(references).where(eq(references.sourceDocId, documentId));
+}
+
+// ─── Document Version Helpers ───────────────────────────────
+
+export async function createDocumentVersion(version: InsertDocumentVersion): Promise<number> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(documentVersions).values(version);
+  return result[0].insertId;
+}
+
+export async function getVersionsByDocumentId(documentId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select({
+      id: documentVersions.id,
+      documentId: documentVersions.documentId,
+      versionNumber: documentVersions.versionNumber,
+      medfId: documentVersions.medfId,
+      title: documentVersions.title,
+      issuer: documentVersions.issuer,
+      snapshot: documentVersions.snapshot,
+      docHash: documentVersions.docHash,
+      ipfsCid: documentVersions.ipfsCid,
+      blockCount: documentVersions.blockCount,
+      changeSummary: documentVersions.changeSummary,
+      userId: documentVersions.userId,
+      createdAt: documentVersions.createdAt,
+    })
+    .from(documentVersions)
+    .where(eq(documentVersions.documentId, documentId))
+    .orderBy(desc(documentVersions.versionNumber));
+}
+
+export async function getVersionById(versionId: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(documentVersions).where(eq(documentVersions.id, versionId)).limit(1);
+  return result.length > 0 ? result[0] : undefined;
+}
+
+export async function getLatestVersionNumber(documentId: number): Promise<number> {
+  const db = await getDb();
+  if (!db) return 0;
+  const result = await db
+    .select({ maxVersion: sql<number>`COALESCE(MAX(${documentVersions.versionNumber}), 0)` })
+    .from(documentVersions)
+    .where(eq(documentVersions.documentId, documentId));
+  return result[0]?.maxVersion ?? 0;
 }

@@ -19,3 +19,12 @@
 - [x] Frontend: Reference tracking (MEDF: doc#block auto-detection and linking)
 - [x] Frontend: Offline verification capability
 - [x] Vitest unit tests
+- [x] DB: document_versions table for snapshot history
+- [x] DB: Add parentId column to comments table for threading (already exists)
+- [x] Backend API: version management (create version, list versions, rollback)
+- [x] Backend API: threaded comments (reply to comment, nested display)
+- [x] Backend API: Pinata IPFS integration (pin document, unpin, check status)
+- [x] Frontend: Version history tab with diff view and rollback
+- [x] Frontend: Threaded comment UI with reply functionality
+- [x] Frontend: IPFS publish button and gateway link display
+- [x] Vitest: tests for new features (versions, threads, IPFS)

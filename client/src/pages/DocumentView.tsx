@@ -12,8 +12,17 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useRoute, Link, useLocation } from "wouter";
 import {
   ArrowLeft,
@@ -37,6 +46,12 @@ import {
   CheckCircle,
   XCircle,
   Loader2,
+  History,
+  RotateCcw,
+  Globe,
+  Upload,
+  Reply,
+  CornerDownRight,
 } from "lucide-react";
 import { verifyDocument, simulateIpfsCid, stableStringify } from "@/lib/medf-crypto";
 import { Streamdown } from "streamdown";
@@ -44,16 +59,15 @@ import type { MedfDocument } from "@shared/medf";
 import { MEDF_CITATION_REGEX } from "@shared/medf";
 import { getLoginUrl } from "@/const";
 
+// ─── Shared Sub-Components ──────────────────────────────────
+
 function CitationLink({ text }: { text: string }) {
   const parts: React.ReactNode[] = [];
   let lastIndex = 0;
   const regex = new RegExp(MEDF_CITATION_REGEX.source, "g");
   let match;
-
   while ((match = regex.exec(text)) !== null) {
-    if (match.index > lastIndex) {
-      parts.push(text.slice(lastIndex, match.index));
-    }
+    if (match.index > lastIndex) parts.push(text.slice(lastIndex, match.index));
     const docId = match[1];
     const blockId = match[2];
     parts.push(
@@ -67,19 +81,11 @@ function CitationLink({ text }: { text: string }) {
     );
     lastIndex = regex.lastIndex;
   }
-  if (lastIndex < text.length) {
-    parts.push(text.slice(lastIndex));
-  }
+  if (lastIndex < text.length) parts.push(text.slice(lastIndex));
   return <>{parts}</>;
 }
 
-function VerificationBadge({
-  valid,
-  label,
-}: {
-  valid: boolean | null;
-  label: string;
-}) {
+function VerificationBadge({ valid, label }: { valid: boolean | null; label: string }) {
   if (valid === null) {
     return (
       <Badge variant="outline" className="gap-1 text-muted-foreground">
@@ -101,13 +107,139 @@ function VerificationBadge({
   );
 }
 
+// ─── Threaded Comment Component ─────────────────────────────
+
+interface CommentData {
+  id: number;
+  documentId: number;
+  blockId: string | null;
+  parentId: number | null;
+  userId: number;
+  content: string;
+  citation: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  userName: string | null;
+}
+
+interface CommentNode extends CommentData {
+  children: CommentNode[];
+}
+
+function buildCommentTree(comments: CommentData[]): CommentNode[] {
+  const map = new Map<number, CommentNode>();
+  const roots: CommentNode[] = [];
+
+  for (const c of comments) {
+    map.set(c.id, { ...c, children: [] });
+  }
+  for (const c of comments) {
+    const node = map.get(c.id)!;
+    if (c.parentId && map.has(c.parentId)) {
+      map.get(c.parentId)!.children.push(node);
+    } else {
+      roots.push(node);
+    }
+  }
+  return roots;
+}
+
+function ThreadedComment({
+  comment,
+  depth,
+  onReply,
+  medfId,
+}: {
+  comment: CommentNode;
+  depth: number;
+  onReply: (parentId: number, blockId: string | null) => void;
+  medfId: string;
+}) {
+  const [showReplies, setShowReplies] = useState(true);
+  const hasReplies = comment.children.length > 0;
+
+  return (
+    <div className={depth > 0 ? "ml-6 border-l-2 border-muted pl-4" : ""}>
+      <div className="py-2">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="h-6 w-6 rounded-full bg-primary/10 flex items-center justify-center">
+              <span className="text-xs font-medium text-primary">
+                {comment.userName?.charAt(0)?.toUpperCase() || "U"}
+              </span>
+            </div>
+            <span className="text-sm font-medium">{comment.userName || "匿名"}</span>
+            {comment.blockId && (
+              <Badge variant="outline" className="text-xs gap-1 h-5">
+                <Hash className="h-2.5 w-2.5" />
+                {comment.blockId}
+              </Badge>
+            )}
+            {comment.parentId && (
+              <Badge variant="secondary" className="text-xs gap-1 h-5">
+                <Reply className="h-2.5 w-2.5" />
+                返信
+              </Badge>
+            )}
+          </div>
+          <span className="text-xs text-muted-foreground">
+            {new Date(comment.createdAt).toLocaleString("ja-JP")}
+          </span>
+        </div>
+        <div className="text-sm mt-1.5 ml-8">
+          <CitationLink text={comment.content} />
+        </div>
+        {comment.citation && (
+          <p className="text-xs text-muted-foreground font-mono mt-1 ml-8">
+            {comment.citation}
+          </p>
+        )}
+        <div className="flex items-center gap-2 mt-1.5 ml-8">
+          <button
+            onClick={() => onReply(comment.id, comment.blockId)}
+            className="text-xs text-muted-foreground hover:text-primary flex items-center gap-1 transition-colors"
+          >
+            <CornerDownRight className="h-3 w-3" />
+            返信
+          </button>
+          {hasReplies && (
+            <button
+              onClick={() => setShowReplies(!showReplies)}
+              className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
+            >
+              {showReplies ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+              {comment.children.length}件の返信
+            </button>
+          )}
+        </div>
+      </div>
+      {showReplies && hasReplies && (
+        <div className="space-y-0">
+          {comment.children.map((child) => (
+            <ThreadedComment
+              key={child.id}
+              comment={child}
+              depth={depth + 1}
+              onReply={onReply}
+              medfId={medfId}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Main DocumentView Component ────────────────────────────
+
 export default function DocumentView() {
   const [, params] = useRoute("/documents/:id");
   const [, setLocation] = useLocation();
   const { user } = useAuth();
   const docId = params?.id ? parseInt(params.id, 10) : null;
 
-  const { data: docData, isLoading } = trpc.document.getById.useQuery(
+  // ─── Queries ──────────────────────────────────────────────
+  const { data: docData, isLoading, refetch: refetchDoc } = trpc.document.getById.useQuery(
     { id: docId! },
     { enabled: docId !== null && !isNaN(docId!) }
   );
@@ -128,79 +260,96 @@ export default function DocumentView() {
     { enabled: !!docData?.medfId }
   );
 
+  const { data: versions, refetch: refetchVersions } = trpc.version.list.useQuery(
+    { documentId: docId! },
+    { enabled: docId !== null && !isNaN(docId!) }
+  );
+
+  // ─── State ────────────────────────────────────────────────
   const [verification, setVerification] = useState<{
     valid: boolean | null;
-    blockResults: Array<{
-      blockId: string;
-      expected: string | undefined;
-      computed: string;
-      valid: boolean;
-    }>;
+    blockResults: Array<{ blockId: string; expected: string | undefined; computed: string; valid: boolean }>;
     docHashResult: { expected: string | undefined; computed: string; valid: boolean } | null;
     ipfsCid: string | null;
   }>({ valid: null, blockResults: [], docHashResult: null, ipfsCid: null });
 
   const [expandedBlocks, setExpandedBlocks] = useState<Set<string>>(new Set());
   const [commentBlockId, setCommentBlockId] = useState<string | null>(null);
+  const [replyToId, setReplyToId] = useState<number | null>(null);
   const [commentText, setCommentText] = useState("");
   const [activeTab, setActiveTab] = useState("content");
+  const [rollbackDialogOpen, setRollbackDialogOpen] = useState(false);
+  const [selectedVersionId, setSelectedVersionId] = useState<number | null>(null);
+  const [diffVersionId, setDiffVersionId] = useState<number | null>(null);
 
+  // ─── Mutations ────────────────────────────────────────────
   const createCommentMutation = trpc.comment.create.useMutation({
     onSuccess: () => {
       setCommentText("");
       setCommentBlockId(null);
+      setReplyToId(null);
       refetchComments();
       toast.success("コメントを投稿しました");
     },
     onError: (err) => toast.error(err.message),
   });
 
-  // Run verification when document loads
+  const rollbackMutation = trpc.version.rollback.useMutation({
+    onSuccess: (data) => {
+      setRollbackDialogOpen(false);
+      setSelectedVersionId(null);
+      refetchDoc();
+      refetchVersions();
+      toast.success(`バージョン ${data.restoredVersion} に復元しました`);
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  const pinMutation = trpc.ipfs.pin.useMutation({
+    onSuccess: (data) => {
+      refetchDoc();
+      if (data.simulated) {
+        toast.info(data.message);
+      } else {
+        toast.success(data.message);
+      }
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  // ─── Verification ────────────────────────────────────────
   const runVerification = useCallback(async () => {
     if (!docData?.medfJson) return;
     try {
       const medf = JSON.parse(docData.medfJson) as MedfDocument;
       const result = await verifyDocument(medf);
       const cid = await simulateIpfsCid(stableStringify(medf));
-      setVerification({
-        valid: result.valid,
-        blockResults: result.blockResults,
-        docHashResult: result.docHashResult,
-        ipfsCid: cid,
-      });
-    } catch (err) {
-      console.error("Verification failed:", err);
+      setVerification({ valid: result.valid, blockResults: result.blockResults, docHashResult: result.docHashResult, ipfsCid: cid });
+    } catch {
       setVerification({ valid: false, blockResults: [], docHashResult: null, ipfsCid: null });
     }
   }, [docData?.medfJson]);
 
-  useEffect(() => {
-    runVerification();
-  }, [runVerification]);
+  useEffect(() => { runVerification(); }, [runVerification]);
 
+  // ─── Handlers ─────────────────────────────────────────────
   const toggleBlock = (blockId: string) => {
     setExpandedBlocks((prev) => {
       const next = new Set(prev);
-      if (next.has(blockId)) next.delete(blockId);
-      else next.add(blockId);
+      if (next.has(blockId)) next.delete(blockId); else next.add(blockId);
       return next;
     });
   };
 
   const handleCopyJson = async () => {
     if (!docData?.medfJson) return;
-    await navigator.clipboard.writeText(
-      JSON.stringify(JSON.parse(docData.medfJson), null, 2)
-    );
+    await navigator.clipboard.writeText(JSON.stringify(JSON.parse(docData.medfJson), null, 2));
     toast.success("JSONをコピーしました");
   };
 
   const handleDownload = () => {
     if (!docData?.medfJson) return;
-    const blob = new Blob(
-      [JSON.stringify(JSON.parse(docData.medfJson), null, 2)],
-      { type: "application/json" }
-    );
+    const blob = new Blob([JSON.stringify(JSON.parse(docData.medfJson), null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -210,22 +359,95 @@ export default function DocumentView() {
   };
 
   const handleSubmitComment = (blockId?: string) => {
-    if (!user) {
-      toast.error("コメントするにはログインが必要です");
-      return;
-    }
+    if (!user) { toast.error("コメントするにはログインが必要です"); return; }
     if (!commentText.trim()) return;
-    const citation = blockId
-      ? `MEDF: ${docData?.medfId}#${blockId}`
-      : `MEDF: ${docData?.medfId}`;
+    const citation = blockId ? `MEDF: ${docData?.medfId}#${blockId}` : `MEDF: ${docData?.medfId}`;
     createCommentMutation.mutate({
       documentId: docId!,
       blockId: blockId || undefined,
+      parentId: replyToId || undefined,
       content: commentText,
       citation,
     });
   };
 
+  const handleReply = (parentId: number, blockId: string | null) => {
+    setReplyToId(parentId);
+    setCommentBlockId(blockId);
+    setActiveTab("discussion");
+  };
+
+  // ─── Computed ─────────────────────────────────────────────
+  const commentTree = useMemo(() => {
+    if (!commentsData) return [];
+    return buildCommentTree(commentsData as CommentData[]);
+  }, [commentsData]);
+
+  const replyToComment = useMemo(() => {
+    if (!replyToId || !commentsData) return null;
+    return (commentsData as CommentData[]).find((c) => c.id === replyToId) || null;
+  }, [replyToId, commentsData]);
+
+  // Diff computation for version comparison
+  const diffData = useMemo(() => {
+    if (!diffVersionId || !docData?.medfJson) return null;
+    const currentVersionMeta = versions?.find((v) => v.id === diffVersionId);
+    if (!currentVersionMeta) return null;
+    try {
+      const currentMedf = JSON.parse(docData.medfJson) as MedfDocument;
+      // We need to fetch the full version with medfJson - use the version query
+      // For now, we'll use the trpc query data if available
+      return { oldVersionMeta: currentVersionMeta, currentMedf };
+    } catch {
+      return null;
+    }
+  }, [diffVersionId, docData?.medfJson, versions]);
+
+  // Fetch full version data for diff when needed
+  const { data: diffVersionData } = trpc.version.getById.useQuery(
+    { versionId: diffVersionId! },
+    { enabled: !!diffVersionId }
+  );
+
+  const diffResult = useMemo(() => {
+    if (!diffData || !diffVersionData?.medfJson || !docData?.medfJson) return null;
+    try {
+      const currentMedf = JSON.parse(docData.medfJson) as MedfDocument;
+      const oldMedf = JSON.parse(diffVersionData.medfJson) as MedfDocument;
+
+      const currentBlockMap = new Map(currentMedf.blocks.map((b) => [b.block_id, b]));
+      const oldBlockMap = new Map(oldMedf.blocks.map((b) => [b.block_id, b]));
+
+      const allBlockIds = Array.from(new Set([...Array.from(currentBlockMap.keys()), ...Array.from(oldBlockMap.keys())]));
+      const diffs: Array<{
+        blockId: string;
+        status: "added" | "removed" | "modified" | "unchanged";
+        oldText?: string;
+        newText?: string;
+      }> = [];
+
+      for (const bid of allBlockIds) {
+        const oldBlock = oldBlockMap.get(bid);
+        const newBlock = currentBlockMap.get(bid);
+        if (!oldBlock && newBlock) {
+          diffs.push({ blockId: bid, status: "added", newText: newBlock.text });
+        } else if (oldBlock && !newBlock) {
+          diffs.push({ blockId: bid, status: "removed", oldText: oldBlock.text });
+        } else if (oldBlock && newBlock) {
+          if (oldBlock.text !== newBlock.text) {
+            diffs.push({ blockId: bid, status: "modified", oldText: oldBlock.text, newText: newBlock.text });
+          } else {
+            diffs.push({ blockId: bid, status: "unchanged" });
+          }
+        }
+      }
+      return { oldVersion: diffVersionData, diffs };
+    } catch {
+      return null;
+    }
+  }, [diffData, diffVersionData, docData?.medfJson]);
+
+  // ─── Loading / Not Found ──────────────────────────────────
   if (isLoading) {
     return (
       <div className="max-w-4xl mx-auto space-y-6">
@@ -242,9 +464,7 @@ export default function DocumentView() {
         <FileText className="h-12 w-12 text-muted-foreground/50 mx-auto mb-4" />
         <h2 className="text-lg font-medium">文書が見つかりません</h2>
         <Link href="/documents">
-          <Button variant="outline" className="mt-4">
-            文書一覧に戻る
-          </Button>
+          <Button variant="outline" className="mt-4">文書一覧に戻る</Button>
         </Link>
       </div>
     );
@@ -253,9 +473,7 @@ export default function DocumentView() {
   const medf = JSON.parse(docData.medfJson) as MedfDocument;
   const blockCommentCounts: Record<string, number> = {};
   commentsData?.forEach((c) => {
-    if (c.blockId) {
-      blockCommentCounts[c.blockId] = (blockCommentCounts[c.blockId] || 0) + 1;
-    }
+    if (c.blockId) blockCommentCounts[c.blockId] = (blockCommentCounts[c.blockId] || 0) + 1;
   });
 
   return (
@@ -263,52 +481,56 @@ export default function DocumentView() {
       {/* Header */}
       <div className="flex items-start justify-between gap-4">
         <div className="flex items-start gap-3">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setLocation("/documents")}
-            className="mt-1"
-          >
+          <Button variant="ghost" size="sm" onClick={() => setLocation("/documents")} className="mt-1">
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <div className="space-y-2">
             <h1 className="text-2xl font-bold tracking-tight">{docData.title}</h1>
             <div className="flex flex-wrap items-center gap-2">
               <Badge variant="outline" className="gap-1 font-mono text-xs">
-                <Hash className="h-3 w-3" />
-                {docData.medfId}
+                <Hash className="h-3 w-3" />{docData.medfId}
               </Badge>
               <Badge variant="secondary" className="gap-1">
-                <User className="h-3 w-3" />
-                {docData.issuer}
+                <User className="h-3 w-3" />{docData.issuer}
               </Badge>
-              {docData.documentType && (
-                <Badge variant="secondary">{docData.documentType}</Badge>
+              {docData.documentType && <Badge variant="secondary">{docData.documentType}</Badge>}
+              <Badge variant="outline" className="gap-1 text-xs">
+                <Clock className="h-3 w-3" />{new Date(docData.snapshot).toLocaleString("ja-JP")}
+              </Badge>
+              <Badge variant="outline" className="gap-1 text-xs">
+                <Layers className="h-3 w-3" />{docData.blockCount}ブロック
+              </Badge>
+              {versions && versions.length > 0 && (
+                <Badge variant="outline" className="gap-1 text-xs text-blue-600 border-blue-300">
+                  <History className="h-3 w-3" />v{versions.length + 1}
+                </Badge>
               )}
-              <Badge variant="outline" className="gap-1 text-xs">
-                <Clock className="h-3 w-3" />
-                {new Date(docData.snapshot).toLocaleString("ja-JP")}
-              </Badge>
-              <Badge variant="outline" className="gap-1 text-xs">
-                <Layers className="h-3 w-3" />
-                {docData.blockCount}ブロック
-              </Badge>
             </div>
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <Button variant="outline" size="sm" onClick={handleCopyJson} className="gap-1">
-            <Copy className="h-3.5 w-3.5" />
-            JSON
+            <Copy className="h-3.5 w-3.5" />JSON
           </Button>
           <Button variant="outline" size="sm" onClick={handleDownload} className="gap-1">
             <Download className="h-3.5 w-3.5" />
           </Button>
+          {user && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1"
+              onClick={() => pinMutation.mutate({ documentId: docId! })}
+              disabled={pinMutation.isPending}
+            >
+              {pinMutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+              IPFS
+            </Button>
+          )}
           {user && docData.userId === user.id && (
             <Link href={`/documents/${docData.id}/edit`}>
               <Button variant="outline" size="sm" className="gap-1">
-                <Edit className="h-3.5 w-3.5" />
-                編集
+                <Edit className="h-3.5 w-3.5" />編集
               </Button>
             </Link>
           )}
@@ -316,15 +538,7 @@ export default function DocumentView() {
       </div>
 
       {/* Verification Banner */}
-      <Card
-        className={`border ${
-          verification.valid === null
-            ? ""
-            : verification.valid
-            ? "border-green-200 bg-green-50/50"
-            : "border-red-200 bg-red-50/50"
-        }`}
-      >
+      <Card className={`border ${verification.valid === null ? "" : verification.valid ? "border-green-200 bg-green-50/50" : "border-red-200 bg-red-50/50"}`}>
         <CardContent className="flex flex-wrap items-center gap-3 py-3">
           {verification.valid === null ? (
             <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
@@ -334,23 +548,12 @@ export default function DocumentView() {
             <ShieldX className="h-5 w-5 text-red-600" />
           )}
           <span className="text-sm font-medium">
-            {verification.valid === null
-              ? "検証中..."
-              : verification.valid
-              ? "すべてのハッシュが一致しています"
-              : "ハッシュの不一致が検出されました"}
+            {verification.valid === null ? "検証中..." : verification.valid ? "すべてのハッシュが一致しています" : "ハッシュの不一致が検出されました"}
           </span>
           <div className="flex flex-wrap gap-2 ml-auto">
+            <VerificationBadge valid={verification.docHashResult?.valid ?? null} label="ドキュメントハッシュ" />
             <VerificationBadge
-              valid={verification.docHashResult?.valid ?? null}
-              label="ドキュメントハッシュ"
-            />
-            <VerificationBadge
-              valid={
-                verification.blockResults.length > 0
-                  ? verification.blockResults.every((r) => r.valid)
-                  : null
-              }
+              valid={verification.blockResults.length > 0 ? verification.blockResults.every((r) => r.valid) : null}
               label={`ブロックハッシュ (${verification.blockResults.length})`}
             />
           </div>
@@ -369,34 +572,68 @@ export default function DocumentView() {
         </CardContent>
       </Card>
 
+      {/* IPFS Gateway Links */}
+      {docData.ipfsCid && (
+        <Card className="border-blue-200 bg-blue-50/30">
+          <CardContent className="flex flex-wrap items-center gap-3 py-3">
+            <Globe className="h-4 w-4 text-blue-600" />
+            <span className="text-sm font-medium text-blue-800">IPFS公開済み</span>
+            <div className="flex flex-wrap gap-2 ml-auto">
+              <a
+                href={`https://ipfs.io/ipfs/${docData.ipfsCid}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs text-blue-600 hover:underline flex items-center gap-1"
+              >
+                <ExternalLink className="h-3 w-3" />ipfs.io
+              </a>
+              <a
+                href={`https://gateway.pinata.cloud/ipfs/${docData.ipfsCid}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs text-blue-600 hover:underline flex items-center gap-1"
+              >
+                <ExternalLink className="h-3 w-3" />Pinata
+              </a>
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(docData.ipfsCid!);
+                  toast.success("CIDをコピーしました");
+                }}
+                className="text-xs text-blue-600 hover:underline flex items-center gap-1"
+              >
+                <Copy className="h-3 w-3" />CIDコピー
+              </button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Main Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList>
+        <TabsList className="flex-wrap">
           <TabsTrigger value="content" className="gap-1">
-            <FileText className="h-3.5 w-3.5" />
-            コンテンツ
+            <FileText className="h-3.5 w-3.5" />コンテンツ
           </TabsTrigger>
           <TabsTrigger value="discussion" className="gap-1">
-            <MessageSquare className="h-3.5 w-3.5" />
-            議論 ({commentsData?.length || 0})
+            <MessageSquare className="h-3.5 w-3.5" />議論 ({commentsData?.length || 0})
+          </TabsTrigger>
+          <TabsTrigger value="versions" className="gap-1">
+            <History className="h-3.5 w-3.5" />履歴 ({versions?.length || 0})
           </TabsTrigger>
           <TabsTrigger value="references" className="gap-1">
-            <Link2 className="h-3.5 w-3.5" />
-            参照 ({(outgoingRefs?.length || 0) + (incomingRefs?.length || 0)})
+            <Link2 className="h-3.5 w-3.5" />参照 ({(outgoingRefs?.length || 0) + (incomingRefs?.length || 0)})
           </TabsTrigger>
           <TabsTrigger value="verification" className="gap-1">
-            <Shield className="h-3.5 w-3.5" />
-            検証詳細
+            <Shield className="h-3.5 w-3.5" />検証詳細
           </TabsTrigger>
           <TabsTrigger value="json" className="gap-1">
-            <Hash className="h-3.5 w-3.5" />
-            JSON
+            <Hash className="h-3.5 w-3.5" />JSON
           </TabsTrigger>
         </TabsList>
 
-        {/* Content Tab */}
+        {/* ─── Content Tab ───────────────────────────────────── */}
         <TabsContent value="content" className="space-y-3 mt-4">
-          {/* TOC */}
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm text-muted-foreground">目次</CardTitle>
@@ -414,9 +651,7 @@ export default function DocumentView() {
                     >
                       <span className="text-muted-foreground text-xs w-6">{i + 1}.</span>
                       <span>{block.block_id}</span>
-                      <Badge variant="outline" className="text-xs h-5">
-                        {block.role}
-                      </Badge>
+                      <Badge variant="outline" className="text-xs h-5">{block.role}</Badge>
                     </button>
                   </li>
                 ))}
@@ -424,11 +659,8 @@ export default function DocumentView() {
             </CardContent>
           </Card>
 
-          {/* Blocks */}
-          {medf.blocks.map((block, i) => {
-            const blockVerification = verification.blockResults.find(
-              (r) => r.blockId === block.block_id
-            );
+          {medf.blocks.map((block) => {
+            const blockVerification = verification.blockResults.find((r) => r.blockId === block.block_id);
             const isExpanded = expandedBlocks.has(block.block_id);
             const commentCount = blockCommentCounts[block.block_id] || 0;
 
@@ -437,44 +669,25 @@ export default function DocumentView() {
                 <CardHeader className="pb-2">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => toggleBlock(block.block_id)}
-                        className="p-0.5 hover:bg-accent rounded"
-                      >
-                        {isExpanded ? (
-                          <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                        ) : (
-                          <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                        )}
+                      <button onClick={() => toggleBlock(block.block_id)} className="p-0.5 hover:bg-accent rounded">
+                        {isExpanded ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
                       </button>
                       <span className="text-sm font-medium">{block.block_id}</span>
-                      <Badge variant="outline" className="text-xs h-5">
-                        {block.role}
-                      </Badge>
-                      <Badge variant="outline" className="text-xs h-5">
-                        {block.format}
-                      </Badge>
-                      {blockVerification && (
-                        <VerificationBadge
-                          valid={blockVerification.valid}
-                          label=""
-                        />
-                      )}
+                      <Badge variant="outline" className="text-xs h-5">{block.role}</Badge>
+                      <Badge variant="outline" className="text-xs h-5">{block.format}</Badge>
+                      {blockVerification && <VerificationBadge valid={blockVerification.valid} label="" />}
                     </div>
                     <div className="flex items-center gap-1">
                       {commentCount > 0 && (
                         <Badge variant="secondary" className="gap-1 text-xs">
-                          <MessageSquare className="h-3 w-3" />
-                          {commentCount}
+                          <MessageSquare className="h-3 w-3" />{commentCount}
                         </Badge>
                       )}
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <button
                             onClick={() => {
-                              navigator.clipboard.writeText(
-                                `MEDF: ${docData.medfId}#${block.block_id}`
-                              );
+                              navigator.clipboard.writeText(`MEDF: ${docData.medfId}#${block.block_id}`);
                               toast.success("引用をコピーしました");
                             }}
                             className="p-1 hover:bg-accent rounded text-muted-foreground hover:text-foreground"
@@ -483,16 +696,11 @@ export default function DocumentView() {
                           </button>
                         </TooltipTrigger>
                         <TooltipContent>
-                          <p className="font-mono text-xs">
-                            MEDF: {docData.medfId}#{block.block_id}
-                          </p>
+                          <p className="font-mono text-xs">MEDF: {docData.medfId}#{block.block_id}</p>
                         </TooltipContent>
                       </Tooltip>
                       <button
-                        onClick={() => {
-                          setCommentBlockId(block.block_id);
-                          setActiveTab("discussion");
-                        }}
+                        onClick={() => { setCommentBlockId(block.block_id); setReplyToId(null); setActiveTab("discussion"); }}
                         className="p-1 hover:bg-accent rounded text-muted-foreground hover:text-foreground"
                       >
                         <MessageSquare className="h-3.5 w-3.5" />
@@ -502,37 +710,14 @@ export default function DocumentView() {
                 </CardHeader>
                 <CardContent>
                   <div className="prose prose-sm max-w-none">
-                    {block.format === "markdown" ? (
-                      <Streamdown>{block.text}</Streamdown>
-                    ) : (
-                      <p className="whitespace-pre-wrap">
-                        <CitationLink text={block.text} />
-                      </p>
-                    )}
+                    {block.format === "markdown" ? <Streamdown>{block.text}</Streamdown> : <p className="whitespace-pre-wrap"><CitationLink text={block.text} /></p>}
                   </div>
                   {isExpanded && (
                     <div className="mt-3 pt-3 border-t space-y-2">
                       <div className="text-xs text-muted-foreground space-y-1">
-                        <p>
-                          <strong>ブロックハッシュ:</strong>{" "}
-                          <span className="font-mono">
-                            {block.block_hash || "未計算"}
-                          </span>
-                        </p>
-                        {blockVerification && (
-                          <p>
-                            <strong>計算済みハッシュ:</strong>{" "}
-                            <span className="font-mono">
-                              {blockVerification.computed}
-                            </span>
-                          </p>
-                        )}
-                        <p>
-                          <strong>引用形式:</strong>{" "}
-                          <span className="font-mono">
-                            MEDF: {docData.medfId}#{block.block_id}
-                          </span>
-                        </p>
+                        <p><strong>ブロックハッシュ:</strong> <span className="font-mono">{block.block_hash || "未計算"}</span></p>
+                        {blockVerification && <p><strong>計算済みハッシュ:</strong> <span className="font-mono">{blockVerification.computed}</span></p>}
+                        <p><strong>引用形式:</strong> <span className="font-mono">MEDF: {docData.medfId}#{block.block_id}</span></p>
                       </div>
                     </div>
                   )}
@@ -542,38 +727,51 @@ export default function DocumentView() {
           })}
         </TabsContent>
 
-        {/* Discussion Tab */}
+        {/* ─── Discussion Tab (Threaded) ─────────────────────── */}
         <TabsContent value="discussion" className="space-y-4 mt-4">
-          {/* Comment form */}
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm">
-                {commentBlockId
+                {replyToId
+                  ? `返信: ${replyToComment?.userName || "匿名"}のコメントに`
+                  : commentBlockId
                   ? `ブロック "${commentBlockId}" へのコメント`
                   : "文書全体へのコメント"}
               </CardTitle>
-              {commentBlockId && (
-                <button
-                  onClick={() => setCommentBlockId(null)}
-                  className="text-xs text-primary hover:underline"
-                >
-                  文書全体にコメントする
-                </button>
-              )}
+              <div className="flex gap-2">
+                {commentBlockId && (
+                  <button onClick={() => { setCommentBlockId(null); setReplyToId(null); }} className="text-xs text-primary hover:underline">
+                    文書全体にコメントする
+                  </button>
+                )}
+                {replyToId && (
+                  <button onClick={() => setReplyToId(null)} className="text-xs text-primary hover:underline">
+                    返信をキャンセル
+                  </button>
+                )}
+              </div>
             </CardHeader>
             <CardContent className="space-y-3">
               {user ? (
                 <>
+                  {replyToComment && (
+                    <div className="bg-muted/50 rounded-md p-3 text-sm border-l-2 border-primary">
+                      <div className="flex items-center gap-2 mb-1">
+                        <Reply className="h-3 w-3 text-muted-foreground" />
+                        <span className="font-medium text-xs">{replyToComment.userName || "匿名"}</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground line-clamp-2">{replyToComment.content}</p>
+                    </div>
+                  )}
                   <Textarea
                     value={commentText}
                     onChange={(e) => setCommentText(e.target.value)}
-                    placeholder="コメントを入力... (MEDF: doc#block 形式で引用可能)"
+                    placeholder={replyToId ? "返信を入力..." : "コメントを入力... (MEDF: doc#block 形式で引用可能)"}
                     className="min-h-[80px] text-sm"
                   />
                   <div className="flex justify-between items-center">
                     <p className="text-xs text-muted-foreground">
-                      引用: MEDF: {docData.medfId}
-                      {commentBlockId ? `#${commentBlockId}` : ""}
+                      引用: MEDF: {docData.medfId}{commentBlockId ? `#${commentBlockId}` : ""}
                     </p>
                     <Button
                       size="sm"
@@ -581,73 +779,199 @@ export default function DocumentView() {
                       disabled={!commentText.trim() || createCommentMutation.isPending}
                       className="gap-1"
                     >
-                      <Send className="h-3.5 w-3.5" />
-                      投稿
+                      {replyToId ? <Reply className="h-3.5 w-3.5" /> : <Send className="h-3.5 w-3.5" />}
+                      {replyToId ? "返信" : "投稿"}
                     </Button>
                   </div>
                 </>
               ) : (
                 <p className="text-sm text-muted-foreground">
-                  コメントするには
-                  <a href={getLoginUrl()} className="text-primary hover:underline ml-1">
-                    ログイン
-                  </a>
-                  してください
+                  コメントするには<a href={getLoginUrl()} className="text-primary hover:underline ml-1">ログイン</a>してください
                 </p>
               )}
             </CardContent>
           </Card>
 
-          {/* Comments list */}
           {!commentsData || commentsData.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               <MessageSquare className="h-8 w-8 mx-auto mb-2 opacity-30" />
               <p className="text-sm">まだコメントはありません</p>
             </div>
           ) : (
-            <div className="space-y-3">
-              {commentsData.map((comment) => (
-                <Card key={comment.id}>
-                  <CardContent className="py-3 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium">
-                          {comment.userName || "匿名"}
-                        </span>
-                        {comment.blockId && (
-                          <Badge variant="outline" className="text-xs gap-1">
-                            <Hash className="h-2.5 w-2.5" />
-                            {comment.blockId}
-                          </Badge>
-                        )}
-                      </div>
-                      <span className="text-xs text-muted-foreground">
-                        {new Date(comment.createdAt).toLocaleString("ja-JP")}
-                      </span>
-                    </div>
-                    <div className="text-sm">
-                      <CitationLink text={comment.content} />
-                    </div>
-                    {comment.citation && (
-                      <p className="text-xs text-muted-foreground font-mono">
-                        {comment.citation}
-                      </p>
-                    )}
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
+            <Card>
+              <CardContent className="py-3">
+                <div className="divide-y">
+                  {commentTree.map((comment) => (
+                    <ThreadedComment
+                      key={comment.id}
+                      comment={comment}
+                      depth={0}
+                      onReply={handleReply}
+                      medfId={docData.medfId}
+                    />
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
           )}
         </TabsContent>
 
-        {/* References Tab */}
+        {/* ─── Versions Tab ──────────────────────────────────── */}
+        <TabsContent value="versions" className="space-y-4 mt-4">
+          {!versions || versions.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <History className="h-8 w-8 mx-auto mb-2 opacity-30" />
+              <p className="text-sm">バージョン履歴はまだありません</p>
+              <p className="text-xs mt-1">文書を編集すると、以前のバージョンがここに保存されます</p>
+            </div>
+          ) : (
+            <>
+              {/* Version list */}
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm flex items-center gap-2">
+                    <History className="h-4 w-4" />
+                    バージョン履歴 ({versions.length}件)
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-2">
+                    {/* Current version */}
+                    <div className="flex items-center justify-between py-2 px-3 bg-primary/5 rounded-lg border border-primary/20">
+                      <div className="flex items-center gap-3">
+                        <Badge className="bg-primary text-primary-foreground">最新</Badge>
+                        <div>
+                          <p className="text-sm font-medium">{docData.title}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {new Date(docData.snapshot).toLocaleString("ja-JP")} · {docData.blockCount}ブロック
+                          </p>
+                        </div>
+                      </div>
+                      <span className="text-xs font-mono text-muted-foreground">
+                        {docData.docHash?.substring(0, 12)}...
+                      </span>
+                    </div>
+
+                    {/* Previous versions */}
+                    {versions.map((version) => (
+                      <div key={version.id} className="flex items-center justify-between py-2 px-3 rounded-lg border hover:bg-accent/50 transition-colors">
+                        <div className="flex items-center gap-3">
+                          <Badge variant="outline" className="text-xs">v{version.versionNumber}</Badge>
+                          <div>
+                            <p className="text-sm">{version.title}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {new Date(version.snapshot).toLocaleString("ja-JP")} · {version.blockCount}ブロック
+                              {version.changeSummary && ` · ${version.changeSummary}`}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-xs gap-1 h-7"
+                            onClick={() => setDiffVersionId(diffVersionId === version.id ? null : version.id)}
+                          >
+                            <FileText className="h-3 w-3" />差分
+                          </Button>
+                          <Dialog open={rollbackDialogOpen && selectedVersionId === version.id} onOpenChange={(open) => { setRollbackDialogOpen(open); if (!open) setSelectedVersionId(null); }}>
+                            <DialogTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-xs gap-1 h-7 text-amber-600 hover:text-amber-700"
+                                onClick={() => { setSelectedVersionId(version.id); setRollbackDialogOpen(true); }}
+                              >
+                                <RotateCcw className="h-3 w-3" />復元
+                              </Button>
+                            </DialogTrigger>
+                            <DialogContent>
+                              <DialogHeader>
+                                <DialogTitle>バージョンを復元しますか？</DialogTitle>
+                                <DialogDescription>
+                                  v{version.versionNumber}（{new Date(version.snapshot).toLocaleString("ja-JP")}）に復元します。
+                                  現在のバージョンは自動的に履歴に保存されます。
+                                </DialogDescription>
+                              </DialogHeader>
+                              <DialogFooter>
+                                <Button variant="outline" onClick={() => setRollbackDialogOpen(false)}>キャンセル</Button>
+                                <Button
+                                  variant="default"
+                                  onClick={() => rollbackMutation.mutate({ documentId: docId!, versionId: version.id })}
+                                  disabled={rollbackMutation.isPending}
+                                  className="gap-1"
+                                >
+                                  {rollbackMutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+                                  復元する
+                                </Button>
+                              </DialogFooter>
+                            </DialogContent>
+                          </Dialog>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Diff view */}
+              {diffResult && (
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      <FileText className="h-4 w-4" />
+                      差分表示: v{diffResult.oldVersion.versionNumber} → 最新
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-3">
+                      {diffResult.diffs.map((diff: { blockId: string; status: string; oldText?: string; newText?: string }) => (
+                        <div key={diff.blockId} className="rounded-lg border overflow-hidden">
+                          <div className={`px-3 py-1.5 text-xs font-medium flex items-center gap-2 ${
+                            diff.status === "added" ? "bg-green-100 text-green-800" :
+                            diff.status === "removed" ? "bg-red-100 text-red-800" :
+                            diff.status === "modified" ? "bg-amber-100 text-amber-800" :
+                            "bg-muted text-muted-foreground"
+                          }`}>
+                            <span className="font-mono">{diff.blockId}</span>
+                            <Badge variant="outline" className="text-xs h-5">
+                              {diff.status === "added" ? "追加" :
+                               diff.status === "removed" ? "削除" :
+                               diff.status === "modified" ? "変更" : "変更なし"}
+                            </Badge>
+                          </div>
+                          {diff.status !== "unchanged" && (
+                            <div className="p-3 text-xs">
+                              {diff.oldText && (
+                                <div className="bg-red-50 border border-red-200 rounded p-2 mb-2">
+                                  <span className="text-red-600 font-medium">- 旧:</span>
+                                  <pre className="whitespace-pre-wrap mt-1 text-red-800">{diff.oldText}</pre>
+                                </div>
+                              )}
+                              {diff.newText && (
+                                <div className="bg-green-50 border border-green-200 rounded p-2">
+                                  <span className="text-green-600 font-medium">+ 新:</span>
+                                  <pre className="whitespace-pre-wrap mt-1 text-green-800">{diff.newText}</pre>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+            </>
+          )}
+        </TabsContent>
+
+        {/* ─── References Tab ────────────────────────────────── */}
         <TabsContent value="references" className="space-y-4 mt-4">
-          {/* Outgoing */}
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm flex items-center gap-2">
-                <ExternalLink className="h-4 w-4" />
-                この文書からの参照 ({outgoingRefs?.length || 0})
+                <ExternalLink className="h-4 w-4" />この文書からの参照 ({outgoingRefs?.length || 0})
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -657,23 +981,12 @@ export default function DocumentView() {
                 <ul className="space-y-2">
                   {outgoingRefs.map((ref) => (
                     <li key={ref.id} className="flex items-center gap-2 text-sm">
-                      <span className="font-mono text-xs text-muted-foreground">
-                        {ref.sourceBlockId && `#${ref.sourceBlockId} →`}
-                      </span>
-                      <Link
-                        href={`/documents/${ref.targetDocId || ref.targetMedfId}`}
-                        className="text-primary hover:underline font-mono text-xs"
-                      >
-                        {ref.citation}
-                      </Link>
+                      <span className="font-mono text-xs text-muted-foreground">{ref.sourceBlockId && `#${ref.sourceBlockId} →`}</span>
+                      <Link href={`/documents/${ref.targetDocId || ref.targetMedfId}`} className="text-primary hover:underline font-mono text-xs">{ref.citation}</Link>
                       {ref.resolved ? (
-                        <Badge variant="outline" className="text-xs text-green-600 border-green-300">
-                          解決済
-                        </Badge>
+                        <Badge variant="outline" className="text-xs text-green-600 border-green-300">解決済</Badge>
                       ) : (
-                        <Badge variant="outline" className="text-xs text-amber-600 border-amber-300">
-                          未解決
-                        </Badge>
+                        <Badge variant="outline" className="text-xs text-amber-600 border-amber-300">未解決</Badge>
                       )}
                     </li>
                   ))}
@@ -681,13 +994,10 @@ export default function DocumentView() {
               )}
             </CardContent>
           </Card>
-
-          {/* Incoming */}
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm flex items-center gap-2">
-                <Link2 className="h-4 w-4" />
-                この文書への参照 ({incomingRefs?.length || 0})
+                <Link2 className="h-4 w-4" />この文書への参照 ({incomingRefs?.length || 0})
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -697,15 +1007,9 @@ export default function DocumentView() {
                 <ul className="space-y-2">
                   {incomingRefs.map((ref) => (
                     <li key={ref.id} className="flex items-center gap-2 text-sm">
-                      <Link
-                        href={`/documents/${ref.sourceDocId}`}
-                        className="text-primary hover:underline"
-                      >
-                        {ref.sourceTitle || ref.sourceMedfId}
-                      </Link>
+                      <Link href={`/documents/${ref.sourceDocId}`} className="text-primary hover:underline">{ref.sourceTitle || ref.sourceMedfId}</Link>
                       <span className="text-xs text-muted-foreground font-mono">
-                        {ref.sourceBlockId && `#${ref.sourceBlockId}`}
-                        {ref.targetBlockId && ` → #${ref.targetBlockId}`}
+                        {ref.sourceBlockId && `#${ref.sourceBlockId}`}{ref.targetBlockId && ` → #${ref.targetBlockId}`}
                       </span>
                     </li>
                   ))}
@@ -715,104 +1019,56 @@ export default function DocumentView() {
           </Card>
         </TabsContent>
 
-        {/* Verification Tab */}
+        {/* ─── Verification Tab ──────────────────────────────── */}
         <TabsContent value="verification" className="space-y-4 mt-4">
           <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm">ドキュメントハッシュ検証</CardTitle>
-            </CardHeader>
+            <CardHeader className="pb-2"><CardTitle className="text-sm">ドキュメントハッシュ検証</CardTitle></CardHeader>
             <CardContent className="space-y-2 text-sm">
               <div className="grid grid-cols-[100px_1fr] gap-2">
                 <span className="text-muted-foreground">アルゴリズム:</span>
                 <span className="font-mono">sha-256</span>
                 <span className="text-muted-foreground">期待値:</span>
-                <span className="font-mono text-xs break-all">
-                  {verification.docHashResult?.expected || "なし"}
-                </span>
+                <span className="font-mono text-xs break-all">{verification.docHashResult?.expected || "なし"}</span>
                 <span className="text-muted-foreground">計算値:</span>
-                <span className="font-mono text-xs break-all">
-                  {verification.docHashResult?.computed || "計算中..."}
-                </span>
+                <span className="font-mono text-xs break-all">{verification.docHashResult?.computed || "計算中..."}</span>
                 <span className="text-muted-foreground">結果:</span>
-                <VerificationBadge
-                  valid={verification.docHashResult?.valid ?? null}
-                  label={verification.docHashResult?.valid ? "一致" : "不一致"}
-                />
+                <VerificationBadge valid={verification.docHashResult?.valid ?? null} label={verification.docHashResult?.valid ? "一致" : "不一致"} />
               </div>
             </CardContent>
           </Card>
-
           <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm">IPFS CIDシミュレーション</CardTitle>
-            </CardHeader>
+            <CardHeader className="pb-2"><CardTitle className="text-sm">IPFS CID</CardTitle></CardHeader>
             <CardContent className="space-y-2 text-sm">
               <div className="grid grid-cols-[100px_1fr] gap-2">
                 <span className="text-muted-foreground">保存CID:</span>
-                <span className="font-mono text-xs break-all">
-                  {docData.ipfsCid || "なし"}
-                </span>
+                <span className="font-mono text-xs break-all">{docData.ipfsCid || "なし"}</span>
                 <span className="text-muted-foreground">計算CID:</span>
-                <span className="font-mono text-xs break-all">
-                  {verification.ipfsCid || "計算中..."}
-                </span>
+                <span className="font-mono text-xs break-all">{verification.ipfsCid || "計算中..."}</span>
                 <span className="text-muted-foreground">一致:</span>
-                <VerificationBadge
-                  valid={
-                    verification.ipfsCid
-                      ? docData.ipfsCid === verification.ipfsCid
-                      : null
-                  }
-                  label={
-                    verification.ipfsCid && docData.ipfsCid === verification.ipfsCid
-                      ? "一致"
-                      : "不一致"
-                  }
-                />
+                <VerificationBadge valid={verification.ipfsCid ? docData.ipfsCid === verification.ipfsCid : null} label={verification.ipfsCid && docData.ipfsCid === verification.ipfsCid ? "一致" : "不一致"} />
               </div>
             </CardContent>
           </Card>
-
           <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm">
-                ブロックハッシュ検証 ({verification.blockResults.length})
-              </CardTitle>
-            </CardHeader>
+            <CardHeader className="pb-2"><CardTitle className="text-sm">ブロックハッシュ検証 ({verification.blockResults.length})</CardTitle></CardHeader>
             <CardContent>
               <div className="space-y-2">
                 {verification.blockResults.map((result) => (
-                  <div
-                    key={result.blockId}
-                    className="flex items-center justify-between py-1.5 border-b last:border-0"
-                  >
+                  <div key={result.blockId} className="flex items-center justify-between py-1.5 border-b last:border-0">
+                    <span className="text-sm font-mono">{result.blockId}</span>
                     <div className="flex items-center gap-2">
-                      <span className="text-sm font-mono">{result.blockId}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-mono text-muted-foreground max-w-[200px] truncate">
-                        {result.computed.substring(0, 16)}...
-                      </span>
-                      <VerificationBadge
-                        valid={result.valid}
-                        label={result.valid ? "OK" : "NG"}
-                      />
+                      <span className="text-xs font-mono text-muted-foreground max-w-[200px] truncate">{result.computed.substring(0, 16)}...</span>
+                      <VerificationBadge valid={result.valid} label={result.valid ? "OK" : "NG"} />
                     </div>
                   </div>
                 ))}
               </div>
             </CardContent>
           </Card>
-
           <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm">RFC 8785 JSON正規化</CardTitle>
-            </CardHeader>
+            <CardHeader className="pb-2"><CardTitle className="text-sm">RFC 8785 JSON正規化</CardTitle></CardHeader>
             <CardContent className="text-sm text-muted-foreground space-y-2">
-              <p>
-                この検証はクライアントサイドで実行されています。RFC 8785に準拠したJSON正規化
-                （Canonical JSON）とWeb Crypto APIによるSHA-256ハッシュ計算を使用しています。
-              </p>
+              <p>この検証はクライアントサイドで実行されています。RFC 8785に準拠したJSON正規化（Canonical JSON）とWeb Crypto APIによるSHA-256ハッシュ計算を使用しています。</p>
               <ul className="list-disc pl-4 space-y-1 text-xs">
                 <li>オブジェクトキーは辞書順にソート</li>
                 <li>不要な空白は除去</li>
@@ -820,36 +1076,27 @@ export default function DocumentView() {
                 <li>ネットワーク接続なしで検証可能</li>
               </ul>
               <Button variant="outline" size="sm" onClick={runVerification} className="gap-1 mt-2">
-                <Shield className="h-3.5 w-3.5" />
-                再検証
+                <Shield className="h-3.5 w-3.5" />再検証
               </Button>
             </CardContent>
           </Card>
         </TabsContent>
 
-        {/* JSON Tab */}
+        {/* ─── JSON Tab ──────────────────────────────────────── */}
         <TabsContent value="json" className="mt-4">
           <Card>
             <CardHeader className="pb-2">
               <div className="flex items-center justify-between">
                 <CardTitle className="text-sm">MeDF JSON (v{medf.medf_version})</CardTitle>
                 <div className="flex gap-1">
-                  <Button variant="ghost" size="sm" onClick={handleCopyJson} className="gap-1">
-                    <Copy className="h-3.5 w-3.5" />
-                    コピー
-                  </Button>
-                  <Button variant="ghost" size="sm" onClick={handleDownload} className="gap-1">
-                    <Download className="h-3.5 w-3.5" />
-                    ダウンロード
-                  </Button>
+                  <Button variant="ghost" size="sm" onClick={handleCopyJson} className="gap-1"><Copy className="h-3.5 w-3.5" />コピー</Button>
+                  <Button variant="ghost" size="sm" onClick={handleDownload} className="gap-1"><Download className="h-3.5 w-3.5" />ダウンロード</Button>
                 </div>
               </div>
             </CardHeader>
             <CardContent>
               <div className="bg-muted/50 rounded-lg p-4 max-h-[600px] overflow-auto">
-                <pre className="text-xs font-mono whitespace-pre-wrap break-all">
-                  {JSON.stringify(medf, null, 2)}
-                </pre>
+                <pre className="text-xs font-mono whitespace-pre-wrap break-all">{JSON.stringify(medf, null, 2)}</pre>
               </div>
             </CardContent>
           </Card>

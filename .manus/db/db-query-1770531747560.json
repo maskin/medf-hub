@@ -1,0 +1,9 @@
+{
+  "query": "CREATE TABLE `document_versions` (\n\t`id` int AUTO_INCREMENT NOT NULL,\n\t`documentId` int NOT NULL,\n\t`versionNumber` int NOT NULL,\n\t`medfId` varchar(256) NOT NULL,\n\t`title` varchar(512) NOT NULL,\n\t`issuer` varchar(256) NOT NULL,\n\t`snapshot` varchar(64) NOT NULL,\n\t`medfJson` text NOT NULL,\n\t`docHash` varchar(128),\n\t`ipfsCid` varchar(128),\n\t`blockCount` int NOT NULL DEFAULT 0,\n\t`changeSummary` varchar(512),\n\t`userId` int NOT NULL,\n\t`createdAt` timestamp NOT NULL DEFAULT (now()),\n\tCONSTRAINT `document_versions_id` PRIMARY KEY(`id`)\n);",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2P1stsHNv58s5KY.a52d91c92036 --database BbcjFyTH6qJZCNPU8vZsip --execute CREATE TABLE `document_versions` (\n\t`id` int AUTO_INCREMENT NOT NULL,\n\t`documentId` int NOT NULL,\n\t`versionNumber` int NOT NULL,\n\t`medfId` varchar(256) NOT NULL,\n\t`title` varchar(512) NOT NULL,\n\t`issuer` varchar(256) NOT NULL,\n\t`snapshot` varchar(64) NOT NULL,\n\t`medfJson` text NOT NULL,\n\t`docHash` varchar(128),\n\t`ipfsCid` varchar(128),\n\t`blockCount` int NOT NULL DEFAULT 0,\n\t`changeSummary` varchar(512),\n\t`userId` int NOT NULL,\n\t`createdAt` timestamp NOT NULL DEFAULT (now()),\n\tCONSTRAINT `document_versions_id` PRIMARY KEY(`id`)\n);",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 1851
+}

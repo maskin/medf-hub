@@ -127,3 +127,38 @@ export const references = mysqlTable("doc_references", {
 
 export type Reference = typeof references.$inferSelect;
 export type InsertReference = typeof references.$inferInsert;
+
+/**
+ * Document version history - stores previous snapshots for versioning
+ */
+export const documentVersions = mysqlTable("document_versions", {
+  id: int("id").autoincrement().primaryKey(),
+  /** FK to documents table (the current/latest document) */
+  documentId: int("documentId").notNull(),
+  /** Version number (1, 2, 3...) */
+  versionNumber: int("versionNumber").notNull(),
+  /** MeDF document ID at this version */
+  medfId: varchar("medfId", { length: 256 }).notNull(),
+  /** Title at this version */
+  title: varchar("title", { length: 512 }).notNull(),
+  /** Issuer at this version */
+  issuer: varchar("issuer", { length: 256 }).notNull(),
+  /** ISO 8601 snapshot timestamp at this version */
+  snapshot: varchar("snapshot", { length: 64 }).notNull(),
+  /** Full MeDF JSON at this version */
+  medfJson: text("medfJson").notNull(),
+  /** Document hash at this version */
+  docHash: varchar("docHash", { length: 128 }),
+  /** IPFS CID at this version */
+  ipfsCid: varchar("ipfsCid", { length: 128 }),
+  /** Number of blocks at this version */
+  blockCount: int("blockCount").notNull().default(0),
+  /** Change summary */
+  changeSummary: varchar("changeSummary", { length: 512 }),
+  /** User who created this version */
+  userId: int("userId").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type DocumentVersion = typeof documentVersions.$inferSelect;
+export type InsertDocumentVersion = typeof documentVersions.$inferInsert;

@@ -7,27 +7,17 @@ import {
   createDocument, getDocumentById, getDocumentByMedfId, listDocuments,
   updateDocument, deleteDocument,
   createBlocks, getBlocksByDocumentId, deleteBlocksByDocumentId,
-  createComment, getCommentsByDocument, deleteComment,
+  createComment, getCommentsByDocument, getCommentById, deleteComment,
   createReferences, getReferencesByDocument, getIncomingReferences,
   resolveReferences, deleteReferencesByDocument,
+  createDocumentVersion, getVersionsByDocumentId, getVersionById, getLatestVersionNumber,
 } from "./db";
 import { extractCitations, slugify } from "@shared/medf";
 import type { MedfDocument, MedfBlock } from "@shared/medf";
+import { TRPCError } from "@trpc/server";
 
 // ─── MeDF Crypto Utilities (Server-side) ────────────────────
 import { createHash } from "crypto";
-
-function canonicalJson(obj: unknown): string {
-  return JSON.stringify(obj, Object.keys(obj as object).sort(), undefined)
-    .replace(/[\u0000-\u001f]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`);
-}
-
-function canonicalJsonRfc8785(obj: unknown): string {
-  // RFC 8785 compliant: sorted keys, no whitespace, ensure_ascii=false
-  return JSON.stringify(obj, (_, v) => v, undefined)
-    ? stableStringify(obj)
-    : "";
-}
 
 function stableStringify(obj: unknown): string {
   if (obj === null || obj === undefined) return "null";
@@ -73,14 +63,11 @@ function computeDocHash(doc: MedfDocument): string {
   return sha256Hex(stableStringify(docSrc));
 }
 
-/** Simulate IPFS CID using SHA-256 of canonical JSON */
 function simulateIpfsCid(jsonStr: string): string {
   const hash = sha256Hex(jsonStr);
-  // Simulate CIDv1 format: bafy + base32-like encoding of hash prefix
   return `bafybeig${hash.substring(0, 52)}`;
 }
 
-/** Convert Markdown to MeDF blocks */
 function markdownToBlocks(content: string): { title: string; blocks: MedfBlock[] } {
   const lines = content.split("\n");
   let title = "";
@@ -93,27 +80,18 @@ function markdownToBlocks(content: string): { title: string; blocks: MedfBlock[]
       continue;
     }
     if (line.startsWith("## ")) {
-      if (currentSection) {
-        sections.push(currentSection);
-      }
+      if (currentSection) sections.push(currentSection);
       currentSection = { title: line.substring(3).trim(), text: "" };
     } else {
       if (currentSection) {
         currentSection.text += line + "\n";
       } else if (line.trim()) {
-        // Content before first ## header
         currentSection = { title: title || "main", text: line + "\n" };
       }
     }
   }
-  if (currentSection) {
-    sections.push(currentSection);
-  }
-
-  // If no sections found, treat entire content as one block
-  if (sections.length === 0) {
-    sections.push({ title: title || "main", text: content });
-  }
+  if (currentSection) sections.push(currentSection);
+  if (sections.length === 0) sections.push({ title: title || "main", text: content });
 
   const medfBlocks: MedfBlock[] = sections.map((section) => ({
     block_id: slugify(section.title),
@@ -187,27 +165,20 @@ const documentRouter = router({
     }),
 
   create: protectedProcedure
-    .input(z.object({
-      medfJson: medfDocumentSchema,
-    }))
+    .input(z.object({ medfJson: medfDocumentSchema }))
     .mutation(async ({ ctx, input }) => {
       const medf = input.medfJson;
 
-      // Compute block hashes
       for (const block of medf.blocks) {
         block.block_hash = computeBlockHash(block);
       }
-
-      // Compute doc hash
       const docHashValue = computeDocHash(medf);
       medf.doc_hash = { algorithm: "sha-256", value: docHashValue };
 
       const medfJsonStr = stableStringify(medf);
       const ipfsCid = simulateIpfsCid(medfJsonStr);
 
-      // Extract title from first block or id
-      const title = medf.blocks[0]?.text?.split("\n")[0]?.replace(/^#+\s*/, "").trim()
-        || medf.id;
+      const title = medf.blocks[0]?.text?.split("\n")[0]?.replace(/^#+\s*/, "").trim() || medf.id;
 
       const docId = await createDocument({
         medfId: medf.id,
@@ -224,7 +195,6 @@ const documentRouter = router({
         blockCount: medf.blocks.length,
       });
 
-      // Store blocks
       await createBlocks(
         medf.blocks.map((block, i) => ({
           documentId: docId,
@@ -237,7 +207,6 @@ const documentRouter = router({
         }))
       );
 
-      // Extract and store references
       const refs = [];
       for (const block of medf.blocks) {
         const citations = extractCitations(block.text);
@@ -253,16 +222,11 @@ const documentRouter = router({
       }
       if (refs.length > 0) {
         await createReferences(refs);
-        // Try to resolve references
         for (const ref of refs) {
           const targetDoc = await getDocumentByMedfId(ref.targetMedfId);
-          if (targetDoc) {
-            await resolveReferences(ref.targetMedfId, targetDoc.id);
-          }
+          if (targetDoc) await resolveReferences(ref.targetMedfId, targetDoc.id);
         }
       }
-
-      // Resolve any existing unresolved references pointing to this document
       await resolveReferences(medf.id, docId);
 
       return { id: docId, medfId: medf.id, docHash: docHashValue, ipfsCid, medf };
@@ -277,15 +241,11 @@ const documentRouter = router({
     }))
     .mutation(async ({ input }) => {
       const { title, blocks } = markdownToBlocks(input.markdown);
-
-      // Compute block hashes
       for (const block of blocks) {
         block.block_hash = computeBlockHash(block);
       }
-
       const docId = input.documentId || slugify(title);
       const snapshot = new Date().toISOString();
-
       const medf: MedfDocument = {
         medf_version: "0.2.1",
         id: docId,
@@ -294,11 +254,8 @@ const documentRouter = router({
         document_type: input.documentType,
         blocks,
       };
-
-      // Compute doc hash
       const docHashValue = computeDocHash(medf);
       medf.doc_hash = { algorithm: "sha-256", value: docHashValue };
-
       return { medf, title };
     }),
 
@@ -306,17 +263,33 @@ const documentRouter = router({
     .input(z.object({
       id: z.number(),
       medfJson: medfDocumentSchema,
+      changeSummary: z.string().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       const existing = await getDocumentById(input.id);
-      if (!existing) throw new Error("Document not found");
+      if (!existing) throw new TRPCError({ code: "NOT_FOUND", message: "Document not found" });
       if (existing.userId !== ctx.user.id && ctx.user.role !== "admin") {
-        throw new Error("Not authorized");
+        throw new TRPCError({ code: "FORBIDDEN", message: "Not authorized" });
       }
 
-      const medf = input.medfJson;
+      // Save current version as a snapshot before updating
+      const latestVersion = await getLatestVersionNumber(input.id);
+      await createDocumentVersion({
+        documentId: input.id,
+        versionNumber: latestVersion + 1,
+        medfId: existing.medfId,
+        title: existing.title,
+        issuer: existing.issuer,
+        snapshot: existing.snapshot,
+        medfJson: existing.medfJson,
+        docHash: existing.docHash || null,
+        ipfsCid: existing.ipfsCid || null,
+        blockCount: existing.blockCount,
+        changeSummary: input.changeSummary || null,
+        userId: ctx.user.id,
+      });
 
-      // Recompute hashes
+      const medf = input.medfJson;
       for (const block of medf.blocks) {
         block.block_hash = computeBlockHash(block);
       }
@@ -326,8 +299,7 @@ const documentRouter = router({
       const medfJsonStr = stableStringify(medf);
       const ipfsCid = simulateIpfsCid(medfJsonStr);
 
-      const title = medf.blocks[0]?.text?.split("\n")[0]?.replace(/^#+\s*/, "").trim()
-        || medf.id;
+      const title = medf.blocks[0]?.text?.split("\n")[0]?.replace(/^#+\s*/, "").trim() || medf.id;
 
       await updateDocument(input.id, {
         medfId: medf.id,
@@ -342,7 +314,6 @@ const documentRouter = router({
         blockCount: medf.blocks.length,
       });
 
-      // Recreate blocks
       await deleteBlocksByDocumentId(input.id);
       await createBlocks(
         medf.blocks.map((block, i) => ({
@@ -356,7 +327,6 @@ const documentRouter = router({
         }))
       );
 
-      // Recreate references
       await deleteReferencesByDocument(input.id);
       const refs = [];
       for (const block of medf.blocks) {
@@ -371,9 +341,7 @@ const documentRouter = router({
           });
         }
       }
-      if (refs.length > 0) {
-        await createReferences(refs);
-      }
+      if (refs.length > 0) await createReferences(refs);
 
       return { id: input.id, docHash: docHashValue, ipfsCid, medf };
     }),
@@ -382,12 +350,93 @@ const documentRouter = router({
     .input(z.object({ id: z.number() }))
     .mutation(async ({ ctx, input }) => {
       const existing = await getDocumentById(input.id);
-      if (!existing) throw new Error("Document not found");
+      if (!existing) throw new TRPCError({ code: "NOT_FOUND", message: "Document not found" });
       if (existing.userId !== ctx.user.id && ctx.user.role !== "admin") {
-        throw new Error("Not authorized");
+        throw new TRPCError({ code: "FORBIDDEN", message: "Not authorized" });
       }
       await deleteDocument(input.id);
       return { success: true };
+    }),
+});
+
+// ─── Version Router ─────────────────────────────────────────
+
+const versionRouter = router({
+  list: publicProcedure
+    .input(z.object({ documentId: z.number() }))
+    .query(async ({ input }) => {
+      return getVersionsByDocumentId(input.documentId);
+    }),
+
+  getById: publicProcedure
+    .input(z.object({ versionId: z.number() }))
+    .query(async ({ input }) => {
+      return getVersionById(input.versionId);
+    }),
+
+  rollback: protectedProcedure
+    .input(z.object({
+      documentId: z.number(),
+      versionId: z.number(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const existing = await getDocumentById(input.documentId);
+      if (!existing) throw new TRPCError({ code: "NOT_FOUND", message: "Document not found" });
+      if (existing.userId !== ctx.user.id && ctx.user.role !== "admin") {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Not authorized" });
+      }
+
+      const version = await getVersionById(input.versionId);
+      if (!version || version.documentId !== input.documentId) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Version not found" });
+      }
+
+      // Save current state as a new version before rollback
+      const latestVersion = await getLatestVersionNumber(input.documentId);
+      await createDocumentVersion({
+        documentId: input.documentId,
+        versionNumber: latestVersion + 1,
+        medfId: existing.medfId,
+        title: existing.title,
+        issuer: existing.issuer,
+        snapshot: existing.snapshot,
+        medfJson: existing.medfJson,
+        docHash: existing.docHash || null,
+        ipfsCid: existing.ipfsCid || null,
+        blockCount: existing.blockCount,
+        changeSummary: `ロールバック前の自動保存 (v${version.versionNumber}へ復元)`,
+        userId: ctx.user.id,
+      });
+
+      // Restore document from version
+      const medf = JSON.parse(version.medfJson) as MedfDocument;
+
+      await updateDocument(input.documentId, {
+        medfId: version.medfId,
+        title: version.title,
+        issuer: version.issuer,
+        snapshot: version.snapshot,
+        medfJson: version.medfJson,
+        docHash: version.docHash || null,
+        ipfsCid: version.ipfsCid || null,
+        blockCount: version.blockCount,
+      });
+
+      // Recreate blocks from version
+      await deleteBlocksByDocumentId(input.documentId);
+      await createBlocks(
+        medf.blocks.map((block, i) => ({
+          documentId: input.documentId,
+          blockId: block.block_id,
+          role: block.role,
+          format: block.format,
+          textContent: block.text,
+          blockHash: block.block_hash || null,
+          sortOrder: i,
+        }))
+      );
+
+      return { success: true, restoredVersion: version.versionNumber };
     }),
 });
 
@@ -412,6 +461,14 @@ const commentRouter = router({
       citation: z.string().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
+      // Validate parent comment exists and belongs to same document
+      if (input.parentId) {
+        const parent = await getCommentById(input.parentId);
+        if (!parent || parent.documentId !== input.documentId) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Invalid parent comment" });
+        }
+      }
+
       const id = await createComment({
         documentId: input.documentId,
         blockId: input.blockId || null,
@@ -447,6 +504,140 @@ const referenceRouter = router({
     }),
 });
 
+// ─── IPFS Router (Pinata Integration) ───────────────────────
+
+const ipfsRouter = router({
+  pin: protectedProcedure
+    .input(z.object({ documentId: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      const doc = await getDocumentById(input.documentId);
+      if (!doc) throw new TRPCError({ code: "NOT_FOUND", message: "Document not found" });
+
+      const pinataApiKey = process.env.PINATA_API_KEY;
+      const pinataSecret = process.env.PINATA_API_SECRET;
+
+      if (!pinataApiKey || !pinataSecret) {
+        // Fallback: simulate IPFS pinning with local CID generation
+        const medfJsonStr = stableStringify(JSON.parse(doc.medfJson));
+        const cid = simulateIpfsCid(medfJsonStr);
+        await updateDocument(input.documentId, { ipfsCid: cid });
+        return {
+          success: true,
+          cid,
+          gateway: `https://ipfs.io/ipfs/${cid}`,
+          simulated: true,
+          message: "Pinata APIキーが未設定のため、CIDをシミュレーションしました。実際のIPFSピニングにはPinata APIキーを設定してください。",
+        };
+      }
+
+      // Real Pinata pinning
+      try {
+        const medfJson = JSON.parse(doc.medfJson);
+        const response = await fetch("https://api.pinata.cloud/pinning/pinJSONToIPFS", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "pinata_api_key": pinataApiKey,
+            "pinata_secret_api_key": pinataSecret,
+          },
+          body: JSON.stringify({
+            pinataContent: medfJson,
+            pinataMetadata: {
+              name: `medf-${doc.medfId}`,
+              keyvalues: {
+                medfId: doc.medfId,
+                medfVersion: doc.medfVersion,
+                issuer: doc.issuer,
+              },
+            },
+          }),
+        });
+
+        if (!response.ok) {
+          const errText = await response.text();
+          throw new Error(`Pinata API error: ${response.status} ${errText}`);
+        }
+
+        const result = await response.json() as { IpfsHash: string };
+        const cid = result.IpfsHash;
+
+        await updateDocument(input.documentId, { ipfsCid: cid });
+
+        return {
+          success: true,
+          cid,
+          gateway: `https://gateway.pinata.cloud/ipfs/${cid}`,
+          simulated: false,
+          message: "IPFSに正常にピン留めされました。",
+        };
+      } catch (err) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `IPFS pinning failed: ${(err as Error).message}`,
+        });
+      }
+    }),
+
+  unpin: protectedProcedure
+    .input(z.object({ documentId: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      const doc = await getDocumentById(input.documentId);
+      if (!doc) throw new TRPCError({ code: "NOT_FOUND", message: "Document not found" });
+      if (!doc.ipfsCid) throw new TRPCError({ code: "BAD_REQUEST", message: "Document has no IPFS CID" });
+
+      const pinataApiKey = process.env.PINATA_API_KEY;
+      const pinataSecret = process.env.PINATA_API_SECRET;
+
+      if (!pinataApiKey || !pinataSecret) {
+        return { success: true, simulated: true, message: "Pinata APIキーが未設定のため、シミュレーションモードです。" };
+      }
+
+      try {
+        const response = await fetch(`https://api.pinata.cloud/pinning/unpin/${doc.ipfsCid}`, {
+          method: "DELETE",
+          headers: {
+            "pinata_api_key": pinataApiKey,
+            "pinata_secret_api_key": pinataSecret,
+          },
+        });
+
+        if (!response.ok && response.status !== 404) {
+          throw new Error(`Pinata unpin error: ${response.status}`);
+        }
+
+        return { success: true, simulated: false, message: "IPFSからアンピンしました。" };
+      } catch (err) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `IPFS unpin failed: ${(err as Error).message}`,
+        });
+      }
+    }),
+
+  status: publicProcedure
+    .input(z.object({ cid: z.string() }))
+    .query(async ({ input }) => {
+      // Check if CID is accessible via public gateway
+      try {
+        const response = await fetch(`https://ipfs.io/ipfs/${input.cid}`, {
+          method: "HEAD",
+          signal: AbortSignal.timeout(10000),
+        });
+        return {
+          accessible: response.ok,
+          gateway: `https://ipfs.io/ipfs/${input.cid}`,
+          pinataGateway: `https://gateway.pinata.cloud/ipfs/${input.cid}`,
+        };
+      } catch {
+        return {
+          accessible: false,
+          gateway: `https://ipfs.io/ipfs/${input.cid}`,
+          pinataGateway: `https://gateway.pinata.cloud/ipfs/${input.cid}`,
+        };
+      }
+    }),
+});
+
 // ─── Main Router ────────────────────────────────────────────
 
 export const appRouter = router({
@@ -460,8 +651,10 @@ export const appRouter = router({
     }),
   }),
   document: documentRouter,
+  version: versionRouter,
   comment: commentRouter,
   reference: referenceRouter,
+  ipfs: ipfsRouter,
 });
 
 export type AppRouter = typeof appRouter;

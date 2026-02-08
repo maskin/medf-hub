@@ -241,6 +241,33 @@ describe("comment.list", () => {
   });
 });
 
+describe("comment.create", () => {
+  it("requires authentication", async () => {
+    const ctx = createPublicContext();
+    const caller = appRouter.createCaller(ctx);
+
+    await expect(
+      caller.comment.create({
+        documentId: 1,
+        content: "Test comment",
+      })
+    ).rejects.toThrow();
+  });
+
+  it("rejects invalid parent comment", async () => {
+    const ctx = createAuthContext();
+    const caller = appRouter.createCaller(ctx);
+
+    await expect(
+      caller.comment.create({
+        documentId: 1,
+        content: "Reply to nonexistent",
+        parentId: 999999,
+      })
+    ).rejects.toThrow();
+  });
+});
+
 describe("reference.outgoing", () => {
   it("returns empty array for non-existent document", async () => {
     const ctx = createPublicContext();
@@ -262,5 +289,95 @@ describe("reference.incoming", () => {
     });
     expect(Array.isArray(result)).toBe(true);
     expect(result).toHaveLength(0);
+  });
+});
+
+// ─── Version Router Tests ───────────────────────────────────
+
+describe("version.list", () => {
+  it("returns empty array for document with no versions", async () => {
+    const ctx = createPublicContext();
+    const caller = appRouter.createCaller(ctx);
+
+    const result = await caller.version.list({ documentId: 999999 });
+    expect(Array.isArray(result)).toBe(true);
+    expect(result).toHaveLength(0);
+  });
+});
+
+describe("version.getById", () => {
+  it("returns null for non-existent version", async () => {
+    const ctx = createPublicContext();
+    const caller = appRouter.createCaller(ctx);
+
+    const result = await caller.version.getById({ versionId: 999999 });
+    expect(result).toBeUndefined();
+  });
+});
+
+describe("version.rollback", () => {
+  it("requires authentication", async () => {
+    const ctx = createPublicContext();
+    const caller = appRouter.createCaller(ctx);
+
+    await expect(
+      caller.version.rollback({ documentId: 1, versionId: 1 })
+    ).rejects.toThrow();
+  });
+
+  it("rejects rollback for non-existent document", async () => {
+    const ctx = createAuthContext();
+    const caller = appRouter.createCaller(ctx);
+
+    await expect(
+      caller.version.rollback({ documentId: 999999, versionId: 1 })
+    ).rejects.toThrow("Document not found");
+  });
+});
+
+// ─── IPFS Router Tests ──────────────────────────────────────
+
+describe("ipfs.pin", () => {
+  it("requires authentication", async () => {
+    const ctx = createPublicContext();
+    const caller = appRouter.createCaller(ctx);
+
+    await expect(
+      caller.ipfs.pin({ documentId: 1 })
+    ).rejects.toThrow();
+  });
+
+  it("rejects pinning non-existent document", async () => {
+    const ctx = createAuthContext();
+    const caller = appRouter.createCaller(ctx);
+
+    await expect(
+      caller.ipfs.pin({ documentId: 999999 })
+    ).rejects.toThrow("Document not found");
+  });
+});
+
+describe("ipfs.unpin", () => {
+  it("requires authentication", async () => {
+    const ctx = createPublicContext();
+    const caller = appRouter.createCaller(ctx);
+
+    await expect(
+      caller.ipfs.unpin({ documentId: 1 })
+    ).rejects.toThrow();
+  });
+});
+
+describe("ipfs.status", () => {
+  it("returns accessibility info for a CID", async () => {
+    const ctx = createPublicContext();
+    const caller = appRouter.createCaller(ctx);
+
+    const result = await caller.ipfs.status({ cid: "bafybeigtest123" });
+    expect(result).toHaveProperty("accessible");
+    expect(result).toHaveProperty("gateway");
+    expect(result).toHaveProperty("pinataGateway");
+    expect(typeof result.accessible).toBe("boolean");
+    expect(result.gateway).toContain("bafybeigtest123");
   });
 });

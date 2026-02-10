@@ -572,6 +572,35 @@ pnpm dev
 
 ## Changelog
 
+### 2026-02-10
+- **Multi-Provider OAuth Authentication**:
+  - Added Google OAuth 2.0 integration (`server/_core/oauth/google.ts`)
+  - Added GitHub OAuth 2.0 integration (`server/_core/oauth/github.ts`)
+  - Created provider selection login page (`client/src/pages/LoginPage.tsx`)
+  - Added `AuthProvider` type and `AUTH_PROVIDERS` config (`shared/types.ts`)
+- **Authentication UX Improvements**:
+  - Implemented login redirect flow (return to original page after auth)
+  - Updated all login links throughout the app to use `/login` route
+  - Fixed cookie security settings (sameSite: "lax" for local dev)
+  - Added unauthorized error handling with auto-redirect to login
+- **Pinata IPFS Integration Fixed**:
+  - Corrected Pinata API authentication (pinata_api_key + pinata_secret_api_key headers)
+  - Fixed `/pinning/pinJSONToIPFS` endpoint for JSON uploads
+  - Fixed `/pinning/unpin/{cid}` endpoint for removing pins
+  - Updated tests to validate both API key and secret
+- **Infrastructure**:
+  - Set up MySQL database and migrations
+  - Configured JWT_SECRET for session tokens
+  - Added BUILT_IN_FORGE_API credentials for Pinata PSA
+- **Environment Variables**:
+  ```
+  GOOGLE_CLIENT_ID/SECRET - Google OAuth credentials
+  GITHUB_CLIENT_ID/SECRET - GitHub OAuth credentials
+  DATABASE_URL - MySQL connection string
+  JWT_SECRET - Session token signing key
+  PINATA_API_KEY/SECRET - Pinata API credentials
+  ```
+
 ### 2026-02-05
 - Added PROJECT_HISTORY.md
 - Clarified relationship with medf repository
@@ -597,6 +626,6 @@ See LICENSE file for details.
 
 ---
 
-*Last Updated: 2026-02-05*
+*Last Updated: 2026-02-10*
 *Platform Status: Pre-release*
 *MEDF Format Version: 0.2.1*

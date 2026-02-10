@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
 import { useState } from "react";
-import { useLocation } from "wouter";
+import { Link, useLocation } from "wouter";
 import {
   ArrowRightLeft,
   Download,
@@ -20,7 +20,6 @@ import {
   Hash,
   Shield,
 } from "lucide-react";
-import { getLoginUrl } from "@/const";
 import type { MedfDocument } from "@shared/medf";
 
 const EXAMPLE_MARKDOWN = `# MeDF サンプル文書
@@ -138,9 +137,9 @@ export default function MarkdownConverter() {
             <Shield className="h-5 w-5 text-amber-600 shrink-0" />
             <p className="text-sm text-amber-800">
               変換・保存するには
-              <a href={getLoginUrl()} className="font-medium underline ml-1">
+              <Link href="/login" className="font-medium underline ml-1">
                 ログイン
-              </a>
+              </Link>
               が必要です
             </p>
           </CardContent>

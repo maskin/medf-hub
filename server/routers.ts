@@ -613,30 +613,33 @@ const ipfsRouter = router({
       const pinataApiKey = process.env.PINATA_API_KEY;
       const pinataSecret = process.env.PINATA_API_SECRET;
 
-      if (!pinataApiKey || !pinataSecret) {
-        return { success: true, simulated: true, message: "Pinata APIキーが未設定のため、シミュレーションモードです。" };
-      }
+      // Try to unpin from Pinata if API keys are available
+      if (pinataApiKey && pinataSecret) {
+        try {
+          const response = await fetch(`https://api.pinata.cloud/pinning/unpin/${doc.ipfsCid}`, {
+            method: "DELETE",
+            headers: {
+              "pinata_api_key": pinataApiKey,
+              "pinata_secret_api_key": pinataSecret,
+            },
+          });
 
-      try {
-        const response = await fetch(`https://api.pinata.cloud/pinning/unpin/${doc.ipfsCid}`, {
-          method: "DELETE",
-          headers: {
-            "pinata_api_key": pinataApiKey,
-            "pinata_secret_api_key": pinataSecret,
-          },
-        });
-
-        if (!response.ok && response.status !== 404) {
-          throw new Error(`Pinata unpin error: ${response.status}`);
+          if (!response.ok && response.status !== 404) {
+            // If unpin fails, log but continue with clearing from DB
+            console.error(`Pinata unpin warning: ${response.status}`);
+          }
+        } catch (err) {
+          console.error(`Pinata unpin error: ${(err as Error).message}`);
         }
-
-        return { success: true, simulated: false, message: "IPFSからアンピンしました。" };
-      } catch (err) {
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: `IPFS unpin failed: ${(err as Error).message}`,
-        });
       }
+
+      // Always clear from database
+      await updateDocument(input.documentId, { ipfsCid: null });
+
+      return {
+        success: true,
+        message: "IPFSピン留めを解除しました。"
+      };
     }),
 
   status: publicProcedure

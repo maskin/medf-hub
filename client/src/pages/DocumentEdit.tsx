@@ -15,9 +15,8 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import { useState, useEffect } from "react";
-import { useRoute, useLocation } from "wouter";
+import { Link, useRoute, useLocation } from "wouter";
 import { ArrowLeft, Plus, Trash2, Save, Shield } from "lucide-react";
-import { getLoginUrl } from "@/const";
 import type { MedfBlock, MedfDocument } from "@shared/medf";
 
 const BLOCK_ROLES = [
@@ -167,9 +166,9 @@ export default function DocumentEdit() {
             <Shield className="h-5 w-5 text-amber-600 shrink-0" />
             <p className="text-sm text-amber-800">
               編集するには
-              <a href={getLoginUrl()} className="font-medium underline ml-1">
+              <Link href="/login" className="font-medium underline ml-1">
                 ログイン
-              </a>
+              </Link>
               が必要です
             </p>
           </CardContent>

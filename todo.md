@@ -1,5 +1,12 @@
 # Project TODO
 
+- [x] Multi-provider OAuth authentication (Google, GitHub, Manus)
+- [x] Provider selection login page UI
+- [x] Login redirect flow (return to original page after auth)
+- [x] Cookie security settings (sameSite: "lax" for local dev)
+- [x] Unauthorized error handling with auto-redirect
+- [x] Pinata IPFS integration fixed (API key + secret authentication)
+- [x] MySQL database setup and migrations
 - [x] Database schema design (documents, blocks, comments, references tables)
 - [x] Database migration execution
 - [x] Backend API: document CRUD (create, read, update, delete)

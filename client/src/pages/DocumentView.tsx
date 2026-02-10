@@ -59,7 +59,6 @@ import { verifyDocument, simulateIpfsCid, stableStringify } from "@/lib/medf-cry
 import { Streamdown } from "streamdown";
 import type { MedfDocument } from "@shared/medf";
 import { MEDF_CITATION_REGEX } from "@shared/medf";
-import { getLoginUrl } from "@/const";
 
 // ─── Shared Sub-Components ──────────────────────────────────
 
@@ -830,7 +829,7 @@ export default function DocumentView() {
                 </>
               ) : (
                 <p className="text-sm text-muted-foreground">
-                  コメントするには<a href={getLoginUrl()} className="text-primary hover:underline ml-1">ログイン</a>してください
+                  コメントするには<Link href="/login" className="text-primary hover:underline ml-1">ログイン</Link>してください
                 </p>
               )}
             </CardContent>

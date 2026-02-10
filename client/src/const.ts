@@ -1,17 +1,20 @@
 export { COOKIE_NAME, ONE_YEAR_MS } from "@shared/const";
+import type { AuthProvider } from "@shared/types";
 
-// Generate login URL at runtime so redirect URI reflects the current origin.
-export const getLoginUrl = () => {
-  const oauthPortalUrl = import.meta.env.VITE_OAUTH_PORTAL_URL;
-  const appId = import.meta.env.VITE_APP_ID;
-  const redirectUri = `${window.location.origin}/api/oauth/callback`;
-  const state = btoa(redirectUri);
-
-  const url = new URL(`${oauthPortalUrl}/app-auth`);
-  url.searchParams.set("appId", appId);
+/**
+ * Generate authorization URL for a specific auth provider
+ * @param provider - The auth provider to use
+ * @param redirectUri - Where to redirect after successful auth (default: "/")
+ */
+export const getAuthUrl = (provider: AuthProvider, redirectUri: string = "/") => {
+  const url = new URL(`${window.location.origin}/api/oauth/authorize`);
+  url.searchParams.set("provider", provider);
   url.searchParams.set("redirectUri", redirectUri);
-  url.searchParams.set("state", state);
-  url.searchParams.set("type", "signIn");
-
   return url.toString();
 };
+
+/**
+ * Legacy function for backward compatibility
+ * Defaults to manus provider
+ */
+export const getLoginUrl = () => getAuthUrl("manus");

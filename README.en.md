@@ -33,7 +33,7 @@ MeDF Hub is a decentralized document sharing and discussion platform built on **
 | **Backend** | Express 4, tRPC 11, Node.js |
 | **Database** | MySQL/TiDB with Drizzle ORM |
 | **Storage** | IPFS (via Pinata), S3 |
-| **Authentication** | Manus OAuth |
+| **Authentication** | Google OAuth, GitHub OAuth, Manus OAuth |
 | **Testing** | Vitest (35+ tests) |
 
 ### System Architecture
@@ -481,18 +481,23 @@ pnpm build
 # Database
 DATABASE_URL=mysql://user:pass@host/database
 
-# OAuth
+# OAuth (Google)
+GOOGLE_CLIENT_ID=your_google_client_id
+GOOGLE_CLIENT_SECRET=your_google_client_secret
+
+# OAuth (GitHub)
+GITHUB_CLIENT_ID=your_github_client_id
+GITHUB_CLIENT_SECRET=your_github_client_secret
+
+# OAuth (Manus - optional)
 VITE_APP_ID=your_app_id
-OAUTH_SERVER_URL=https://api.manus.im
-VITE_OAUTH_PORTAL_URL=https://login.manus.im
+
+# JWT Secret
+JWT_SECRET=your_jwt_secret_min_32_chars
 
 # IPFS (optional)
 PINATA_API_KEY=your_pinata_key
 PINATA_API_SECRET=your_pinata_secret
-
-# Storage
-BUILT_IN_FORGE_API_URL=https://forge.manus.im
-BUILT_IN_FORGE_API_KEY=your_forge_key
 ```
 
 ---

@@ -7,7 +7,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { getLoginUrl } from "@/const";
 import { Link, useLocation } from "wouter";
 import {
   FileText,
@@ -95,12 +94,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 </DropdownMenuContent>
               </DropdownMenu>
             ) : (
-              <Button
-                size="sm"
-                onClick={() => (window.location.href = getLoginUrl())}
-              >
-                ログイン
-              </Button>
+              <Link href={`/login?redirect=${location}`}>
+                <Button size="sm">ログイン</Button>
+              </Link>
             )}
 
             {/* Mobile menu toggle */}

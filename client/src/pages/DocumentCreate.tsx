@@ -15,9 +15,8 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
 import { useState } from "react";
-import { useLocation } from "wouter";
+import { Link, useLocation } from "wouter";
 import { Plus, Trash2, ArrowLeft, Upload, Shield } from "lucide-react";
-import { getLoginUrl } from "@/const";
 import type { MedfBlock, MedfDocument } from "@shared/medf";
 
 const BLOCK_ROLES = [
@@ -153,7 +152,7 @@ export default function DocumentCreate() {
             <Shield className="h-5 w-5 text-amber-600 shrink-0" />
             <p className="text-sm text-amber-800">
               文書を作成するには
-              <a href={getLoginUrl()} className="font-medium underline ml-1">ログイン</a>
+              <Link href="/login" className="font-medium underline ml-1">ログイン</Link>
               が必要です
             </p>
           </CardContent>

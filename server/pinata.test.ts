@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 describe("Pinata API credentials", () => {
   it("should have PINATA_API_KEY and PINATA_API_SECRET set", () => {
-    // These are set via webdev_request_secrets; verify they exist
+    // Regular Pinata API requires both key and secret
     const apiKey = process.env.PINATA_API_KEY;
     const apiSecret = process.env.PINATA_API_SECRET;
     expect(apiKey).toBeDefined();

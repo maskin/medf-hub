@@ -3,6 +3,8 @@ import path from "path";
 
 const templateRoot = path.resolve(import.meta.dirname);
 
+
+
 export default defineConfig({
   root: templateRoot,
   resolve: {
@@ -16,4 +18,6 @@ export default defineConfig({
     environment: "node",
     include: ["server/**/*.test.ts", "server/**/*.spec.ts"],
   },
+build: {
+outDir: 'dist'  // ← public を削除して dist 直下に出力するように変更
 });

@@ -1,26 +1,21 @@
 {
   "version": 2,
-  "cleanUrls": true,
-  "trailingSlash": false,
-  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }],
-  "headers": [
+  "builds": [
     {
-      "source": "**/*.js",
-      "headers": [
-        {
-          "key": "Content-Type",
-          "value": "application/javascript; charset=utf-8"
-        }
-      ]
-    },
-    {
-      "source": "**/*.css",
-      "headers": [
-        {
-          "key": "Content-Type",
-          "value": "text/css; charset=utf-8"
-        }
-      ]
+      "src": "package.json",
+      "use": "@vercel/static-build",
+      "config": {
+        "distDir": "dist/public",
+        "buildCommand": "pnpm build"
+      }
     }
-  ]
+  ],
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ],
+  "cleanUrls": true,
+  "trailingSlash": false
 }

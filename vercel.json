@@ -9,11 +9,11 @@
   ],
   "headers": [
     {
-      "source": "/assets/(.*)",
+      "source": "/assets/(.*)\\.js",
       "headers": [
         {
           "key": "Content-Type",
-          "value": "application/javascript"
+          "value": "application/javascript; charset=utf-8"
         }
       ]
     },
@@ -22,16 +22,16 @@
       "headers": [
         {
           "key": "Content-Type",
-          "value": "application/javascript"
+          "value": "application/javascript; charset=utf-8"
         }
       ]
     },
     {
-      "source": "/(.*)\\.css",
+      "source": "/assets/(.*)\\.css",
       "headers": [
         {
           "key": "Content-Type",
-          "value": "text/css"
+          "value": "text/css; charset=utf-8"
         }
       ]
     }

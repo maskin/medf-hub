@@ -5,21 +5,21 @@
   "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }],
   "headers": [
     {
-      "source": "/assets/(.*)",
+      "source": "**/*.js",
       "headers": [
-        { "key": "Content-Type", "value": "application/javascript; charset=utf-8" }
+        {
+          "key": "Content-Type",
+          "value": "application/javascript; charset=utf-8"
+        }
       ]
     },
     {
-      "source": "/(.*)\\.js",
+      "source": "**/*.css",
       "headers": [
-        { "key": "Content-Type", "value": "application/javascript; charset=utf-8" }
-      ]
-    },
-    {
-      "source": "/assets/(.*)\\.css",
-      "headers": [
-        { "key": "Content-Type", "value": "text/css; charset=utf-8" }
+        {
+          "key": "Content-Type",
+          "value": "text/css; charset=utf-8"
+        }
       ]
     }
   ]

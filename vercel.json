@@ -1,0 +1,13 @@
+{
+  "version": 2,
+  "rootDirectory": "client",
+  "framework": "vite",
+  "builds": [
+    {
+      "src": "client/package.json",
+      "use": "@vercel/static-build",
+      "config": { "distDir": "dist/public" }
+    }
+  ],
+  "outputDirectory": "client/dist/public"
+}

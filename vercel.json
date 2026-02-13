@@ -10,10 +10,6 @@
     {
       "source": "/api/:path*",
       "destination": "https://a3803yvb.up.railway.app/:path*"
-    },
-    {
-      "source": "/api/:path*",
-      "status": 404
     }
   ],
   "cleanUrls": true,

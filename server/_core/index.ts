@@ -36,9 +36,9 @@ async function startServer() {
     const origin = req.headers.origin;
     // Allow requests from actual frontend domains and local development
     const allowedOrigins = [
-      'https://api.medf.dev',
-      'https://hub.medf.dev',
-      'https://medf-hub.vercel.app',
+      'https://a3803yvb.up.railway.app',  // Railway backend (actual)
+      'https://hub.medf.dev',             // Vercel frontend (custom domain)
+      'https://medf-hub.vercel.app',        // Vercel frontend (old)
       'http://localhost:5173',
       'http://localhost:5174',
     ];

@@ -30,6 +30,32 @@ async function findAvailablePort(startPort: number = 3000): Promise<number> {
 async function startServer() {
   const app = express();
   const server = createServer(app);
+
+  // Enable CORS for frontend on Vercel
+  app.use((req, res, next) => {
+    const origin = req.headers.origin;
+    // Allow requests from Vercel frontend and local development
+    const allowedOrigins = [
+      'https://medf-hub.vercel.app',
+      'https://hub.medf.dev',
+      'http://localhost:5173',
+      'http://localhost:5174',
+    ];
+
+    if (allowedOrigins.includes(origin || '')) {
+      res.setHeader('Access-Control-Allow-Origin', origin || '*');
+    }
+
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+
+    if (req.method === 'OPTIONS') {
+      return res.sendStatus(200);
+    }
+    next();
+  });
+
   // Configure body parser with larger size limit for file uploads
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));

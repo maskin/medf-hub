@@ -40,10 +40,20 @@ queryClient.getMutationCache().subscribe(event => {
   }
 });
 
+// Use environment variable for backend URL in production
+const getBackendUrl = () => {
+  // Check if we're in production and have a backend URL configured
+  if (import.meta.env.VITE_API_URL) {
+    return import.meta.env.VITE_API_URL;
+  }
+  // Development: use relative path for Vite proxy
+  return "/api/trpc";
+};
+
 const trpcClient = trpc.createClient({
   links: [
     httpBatchLink({
-      url: "/api/trpc",
+      url: getBackendUrl(),
       transformer: superjson,
       fetch(input, init) {
         return globalThis.fetch(input, {

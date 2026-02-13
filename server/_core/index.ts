@@ -31,13 +31,14 @@ async function startServer() {
   const app = express();
   const server = createServer(app);
 
-  // Enable CORS for frontend on Vercel
+  // Enable CORS for frontend
   app.use((req, res, next) => {
     const origin = req.headers.origin;
-    // Allow requests from Vercel frontend and local development
+    // Allow requests from actual frontend domains and local development
     const allowedOrigins = [
-      'https://medf-hub.vercel.app',
+      'https://api.medf.dev',
       'https://hub.medf.dev',
+      'https://medf-hub.vercel.app',
       'http://localhost:5173',
       'http://localhost:5174',
     ];
